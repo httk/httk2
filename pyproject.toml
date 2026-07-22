@@ -8,6 +8,7 @@ version = "2.0.0"
 description = "The high-throughput toolkit for materials science"
 readme = "README.md"
 license = "AGPL-3.0-or-later"
+license-files = ["LICENSE"]
 requires-python = ">=3.12"
 authors = [{ name = "Rickard Armiento", email = "rickard-gpg@armiento.net" }]
 dependencies = [
@@ -25,6 +26,7 @@ classifiers = [
   "Intended Audience :: Science/Research",
   "Operating System :: OS Independent",
   "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
   "Programming Language :: Python :: 3.12",
   "Topic :: Scientific/Engineering :: Chemistry",
   "Topic :: Scientific/Engineering :: Physics",
@@ -40,6 +42,10 @@ optimade = [
 all = [
   "httk-web>=0.1.0,<1",
   "httk-optimade>=0.1.0,<1",
+]
+release = [
+  "build>=1.2",
+  "twine>=6.0",
 ]
 
 [project.urls]
