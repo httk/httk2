@@ -13,7 +13,7 @@ requires-python = ">=3.12"
 authors = [{ name = "Rickard Armiento", email = "rickard-gpg@armiento.net" }]
 dependencies = [
   "httk-core>=2.0.0,<3",
-  "httk-io>=1.0.0,<2",
+  "httk-io>=0.1.0,<1",
   "httk-atomistic>=0.1.0,<1",
 ]
 keywords = [
