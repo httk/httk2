@@ -1,0 +1,52 @@
+[build-system]
+requires = ["setuptools>=77", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "httk2"
+version = "2.0.0"
+description = "The high-throughput toolkit for materials science"
+readme = "README.md"
+license = "AGPL-3.0-or-later"
+requires-python = ">=3.12"
+authors = [{ name = "Rickard Armiento", email = "rickard-gpg@armiento.net" }]
+dependencies = [
+  "httk-core>=2.0.0,<3",
+  "httk-io>=1.0.0,<2",
+  "httk-atomistic>=0.1.0,<1",
+]
+keywords = [
+  "Materials Discovery",
+  "Materials Informatics",
+  "Materials Science",
+]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Science/Research",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Scientific/Engineering :: Chemistry",
+  "Topic :: Scientific/Engineering :: Physics",
+]
+
+[project.optional-dependencies]
+web = [
+  "httk-web>=0.1.0,<1",
+]
+optimade = [
+  "httk-optimade>=0.1.0,<1",
+]
+all = [
+  "httk-web>=0.1.0,<1",
+  "httk-optimade>=0.1.0,<1",
+]
+
+[project.urls]
+Homepage = "https://httk.org"
+Documentation = "https://docs.httk.org"
+Repository = "https://github.com/httk/httk2"
+Issues = "https://github.com/httk/httk2/issues"
+
+[tool.setuptools]
+packages = []
