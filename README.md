@@ -1,8 +1,17 @@
 # httk2
 
+![Status: Pre-release](https://img.shields.io/badge/status-pre--release-red)
+
+> **⚠️ PRE-RELEASE**
+>
+> The version assigned to *httk2* meta-package designates the overall version of *httk₂*,
+> and thus starts at v2.0.0. However, versions v2.0.* are to be considered
+> prereleases, and semantic versioning will not be used until v2.1.0.
+
 The high-throughput toolkit (*httk₂*) is a modular Python toolkit for materials
 science. This repository provides the `httk2` metapackage: it contains no Python
-code of its own and installs the standard set of *httk₂* modules.
+code of its own; ; instead, it installs a standard set of httk₂ modules, with
+additional modules available through optional extras.
 
 ## Installation
 
