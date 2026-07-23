@@ -1,8 +1,8 @@
 # httk2
 
-The high-throughput toolkit (`httk`) is a modular Python toolkit for materials
+The high-throughput toolkit (*httk₂*) is a modular Python toolkit for materials
 science. This repository provides the `httk2` metapackage: it contains no Python
-code of its own and installs the standard set of httk v2 modules.
+code of its own and installs the standard set of *httk₂* modules.
 
 ## Installation
 

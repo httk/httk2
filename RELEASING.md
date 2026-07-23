@@ -1,7 +1,7 @@
 # Releasing `httk2`
 
 `httk2` is a metapackage: it contains no Python code of its own and only pins
-the set of httk v2 modules to install. Releases are built and published by
+the set of *httk₂* modules to install. Releases are built and published by
 GitHub Actions. PyPI authentication uses Trusted Publishing, so the repository
 does not need a stored PyPI API token.
 
@@ -64,7 +64,10 @@ candidate version when repeating an upload, for example `2.0.0rc1` followed by
 ## TestPyPI
 
 Run the **Publish package** workflow manually in GitHub Actions. A manual run
-publishes to TestPyPI only. When the workflow run has completed (approving the
+publishes to TestPyPI only. To retry a TestPyPI upload without committing a version bump, pass the
+optional `version_suffix` workflow input (e.g. `.post1` or `rc2`); it is
+appended to `project.version` for that build only.
+When the workflow run has completed (approving the
 `testpypi` environment first, if it has a required reviewer), test the artifact
 in a fresh environment. Because the metapackage's dependencies live on PyPI,
 allow pip to fall back to it for them:

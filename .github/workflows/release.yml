@@ -4,6 +4,13 @@ on:
   release:
     types: [published]
   workflow_dispatch:
+    inputs:
+      version_suffix:
+        description: >-
+          Optional PEP 440 suffix appended to project.version for this
+          TestPyPI build (e.g. .post1, rc2, .dev1)
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -37,6 +44,26 @@ jobs:
               raise SystemExit(
                   f"release tag {os.environ['RELEASE_TAG']!r} does not match {expected_tag!r}"
               )
+          PY
+
+      - name: Apply version suffix (TestPyPI dry runs only)
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.version_suffix != ''
+        env:
+          VERSION_SUFFIX: ${{ github.event.inputs.version_suffix }}
+        run: |
+          python - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+
+          path = Path("pyproject.toml")
+          text = path.read_text()
+          match = re.search(r'^version = "([^"]+)"', text, flags=re.M)
+          if match is None:
+              raise SystemExit("could not find project.version in pyproject.toml")
+          version = match.group(1) + os.environ["VERSION_SUFFIX"]
+          path.write_text(text[: match.start(1)] + version + text[match.end(1) :])
+          print(f"building as version {version}")
           PY
 
       - name: Install release dependencies

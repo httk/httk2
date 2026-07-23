@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "httk2"
 version = "2.0.0"
-description = "The high-throughput toolkit for materials science"
+description = "The high-throughput toolkit (httk₂) for materials science"
 readme = "README.md"
 license = "AGPL-3.0-or-later"
 license-files = ["LICENSE"]
