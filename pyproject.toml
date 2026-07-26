@@ -12,9 +12,10 @@ license-files = ["LICENSE"]
 requires-python = ">=3.12"
 authors = [{ name = "Rickard Armiento", email = "rickard-gpg@armiento.net" }]
 dependencies = [
-  "httk-core>=2.0.0,<3",
+  "httk-core[default]>=2.0.0,<3",
   "httk-io>=0.1.0,<1",
   "httk-atomistic>=0.1.0,<1",
+  "httk-workflow",
 ]
 keywords = [
   "Materials Discovery",
