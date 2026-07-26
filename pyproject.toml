@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "httk2"
-version = "2.0.0"
+version = "2.0.2"
 description = "The high-throughput toolkit (httk₂) for materials science"
 readme = "README.md"
 license = "AGPL-3.0-or-later"
@@ -13,9 +13,9 @@ requires-python = ">=3.12"
 authors = [{ name = "Rickard Armiento", email = "rickard-gpg@armiento.net" }]
 dependencies = [
   "httk-core[default]>=2.0.0,<3",
-  "httk-io>=0.1.0,<1",
-  "httk-atomistic>=0.1.0,<1",
-  "httk-workflow",
+  "httk-io[default]>=0.1.0,<1",
+  "httk-atomistic[default]>=0.1.0,<1",
+  "httk-workflow[default]>=0.1.0,<1",
 ]
 keywords = [
   "Materials Discovery",
@@ -34,15 +34,16 @@ classifiers = [
 ]
 
 [project.optional-dependencies]
+default = []
 web = [
-  "httk-web>=0.1.0,<1",
+  "httk-web[default]>=0.1.0,<1",
 ]
 optimade = [
-  "httk-optimade>=0.1.0,<1",
+  "httk-optimade[default]>=0.1.0,<1",
 ]
 all = [
-  "httk-web>=0.1.0,<1",
-  "httk-optimade>=0.1.0,<1",
+  "httk-web[default]>=0.1.0,<1",
+  "httk-optimade[default]>=0.1.0,<1",
 ]
 release = [
   "build>=1.2",
