@@ -38,15 +38,11 @@ classifiers = [
 
 [project.optional-dependencies]
 default = []
-web = [
-  "httk-web[default]>=0.1.0,<1",
-]
-optimade = [
-  "httk-optimade[default]>=0.1.0,<1",
+serve = [
+  "httk-serve[default]>=0.2.0,<1",
 ]
 all = [
-  "httk-web[default]>=0.1.0,<1",
-  "httk-optimade[default]>=0.1.0,<1",
+  "httk-serve[default]>=0.2.0,<1",
 ]
 release = [
   "build>=1.2",

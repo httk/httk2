@@ -35,11 +35,10 @@ separate `httk2` import package.
 
 ## Optional modules
 
-Web and OPTIMADE support can be installed separately:
+Web publishing and OPTIMADE serving are provided together by `httk-serve`:
 
 ```console
-pip install "httk2[web]"
-pip install "httk2[optimade]"
+pip install "httk2[serve]"
 ```
 
 Install every module selected by this metapackage with:

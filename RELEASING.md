@@ -14,8 +14,8 @@ exist on PyPI at compatible versions. An `httk2` release resolves only if its
 - `httk-core`, `httk-io`, and `httk-atomistic` must be published (at versions
   matching the ranges in `pyproject.toml`) before the base `httk2` release is
   installable.
-- `httk-web` and `httk-optimade` must be published before the `web`,
-  `optimade`, and `all` extras are meaningful; otherwise an
+- `httk-serve` must be published before the `serve` and `all` extras are
+  meaningful; otherwise an
   `httk2[all]` install will fail to resolve.
 
 Release the individual module distributions first, confirm they install from
