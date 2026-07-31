@@ -27,6 +27,8 @@ This installs:
 - [`httk-io`](https://github.com/httk/httk-io), providing `httk.io`
 - [`httk-atomistic`](https://github.com/httk/httk-atomistic), providing
   `httk.atomistic`
+- [`httk-analyse`](https://github.com/httk/httk-analyse), providing
+  `httk.analyse`
 - [`httk-workflow`](https://github.com/httk/httk-workflow), providing
   `httk.workflow` and the `httk workflow` command tree
 

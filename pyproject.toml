@@ -18,6 +18,7 @@ dependencies = [
   "httk-core[default]>=2.0.2,<3",
   "httk-io[default]>=0.2.0,<1",
   "httk-atomistic[default]>=0.2.0,<1",
+  "httk-analyse[default]>=0.1.0,<1",
   "httk-workflow[default]>=0.2.0,<1",
 ]
 keywords = [

@@ -78,7 +78,7 @@ jobs:
           /tmp/httk2-wheel-test/bin/python -m pip install --no-deps dist/*.whl
           metadata=$(unzip -p dist/*.whl '*.dist-info/METADATA')
           echo "$metadata" | grep '^Requires-Dist:'
-          for dep in httk-core httk-io httk-atomistic; do
+          for dep in httk-core httk-io httk-atomistic httk-analyse; do
             echo "$metadata" | grep -q "^Requires-Dist: $dep" || {
               echo "missing Requires-Dist for $dep"; exit 1; }
           done
