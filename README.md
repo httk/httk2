@@ -48,3 +48,25 @@ For a local checkout, the same dependency set can be installed with
 Individual modules can also be installed on their own (for example
 `pip install httk-core` for a minimal, dependency-free core); see each module
 repository for its optional extras.
+
+## Developing httk₂
+
+This repository's `Makefile` doubles as a small workspace manager for working
+on all httk₂ modules at once:
+
+```console
+make checkout   # clone any missing module repositories into modules/
+make fetch      # git fetch in every module repository
+make pull       # git pull --ff-only in every module repository
+make push       # git push in every module repository
+make install    # editable-install every module (with its default extra)
+                # into the currently activated virtual environment
+```
+
+`checkout` clones over SSH from `git@github.com:httk/...` and skips
+repositories already present, so it is safe to re-run. `fetch`, `pull`, and
+`push` operate on whatever branch each repository currently has checked out,
+continue past individual failures, and exit non-zero if any repository failed.
+`install` refuses to run without an activated virtual environment, and installs
+the modules in dependency order so each editable install finds its httk
+dependencies already in place.

@@ -2,6 +2,9 @@
 \#*\#
 .\#*
 
+# Local checkouts of the httk₂ module repositories (see "make checkout")
+/modules/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
