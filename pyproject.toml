@@ -18,6 +18,8 @@ dependencies = [
   "httk-core[default]>=2.0.2,<3",
   "httk-io[default]>=0.2.0,<1",
   "httk-atomistic[default]>=0.2.0,<1",
+  "httk-data[default]>=0.2.0,<1",
+  "httk-serve[default]>=0.2.0,<1",
   "httk-analyse[default]>=0.1.0,<1",
   "httk-workflow[default]>=0.2.0,<1",
 ]
@@ -39,12 +41,6 @@ classifiers = [
 
 [project.optional-dependencies]
 default = []
-serve = [
-  "httk-serve[default]>=0.2.0,<1",
-]
-all = [
-  "httk-serve[default]>=0.2.0,<1",
-]
 release = [
   "build>=1.2",
   "twine>=6.0",

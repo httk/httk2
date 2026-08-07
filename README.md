@@ -10,8 +10,8 @@
 
 The high-throughput toolkit (*httk₂*) is a modular Python toolkit for materials
 science. This repository provides the `httk2` metapackage: it contains no Python
-code of its own; ; instead, it installs a standard set of httk₂ modules, with
-additional modules available through optional extras.
+code of its own; instead, it installs the standard set of httk₂ modules, each
+with its default feature set.
 
 ## Installation
 
@@ -27,27 +27,24 @@ This installs:
 - [`httk-io`](https://github.com/httk/httk-io), providing `httk.io`
 - [`httk-atomistic`](https://github.com/httk/httk-atomistic), providing
   `httk.atomistic`
+- [`httk-data`](https://github.com/httk/httk-data), providing `httk.data`
+- [`httk-serve`](https://github.com/httk/httk-serve), providing `httk.serve`
+  (web publishing and OPTIMADE serving)
 - [`httk-analyse`](https://github.com/httk/httk-analyse), providing
   `httk.analyse`
 - [`httk-workflow`](https://github.com/httk/httk-workflow), providing
   `httk.workflow` and the `httk workflow` command tree
 
+Each module is installed with its `default` extra, which selects that module's
+recommended optional features (for example numpy-backed numerics and `spglib`
+symmetry recognition).
+
 The modules share the PEP 420 native namespace package `httk`; there is no
 separate `httk2` import package.
 
-## Optional modules
+For a local checkout, the same dependency set can be installed with
+`pip install .`.
 
-Web publishing and OPTIMADE serving are provided together by `httk-serve`:
-
-```console
-pip install "httk2[serve]"
-```
-
-Install every module selected by this metapackage with:
-
-```console
-pip install "httk2[all]"
-```
-
-For a local checkout, the same dependency sets can be installed with
-`pip install .` and `pip install ".[all]"`.
+Individual modules can also be installed on their own (for example
+`pip install httk-core` for a minimal, dependency-free core); see each module
+repository for its optional extras.
