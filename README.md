@@ -27,7 +27,7 @@ This installs:
 - [`httk-io`](https://github.com/httk/httk-io), providing `httk.io`
 - [`httk-atomistic`](https://github.com/httk/httk-atomistic), providing
   `httk.atomistic`
-- [`httk-data`](https://github.com/httk/httk-data), providing `httk.data`
+- [`httk-store`](https://github.com/httk/httk-store), providing `httk.store`
 - [`httk-serve`](https://github.com/httk/httk-serve), providing `httk.serve`
   (web publishing and OPTIMADE serving)
 - [`httk-analyse`](https://github.com/httk/httk-analyse), providing

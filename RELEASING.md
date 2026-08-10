@@ -11,7 +11,7 @@ The metapackage must be released **after** the modules it depends on already
 exist on PyPI at compatible versions. An `httk2` release resolves only if its
 `Requires-Dist` entries can be satisfied from the index:
 
-- `httk-core`, `httk-io`, `httk-atomistic`, `httk-data`, `httk-serve`,
+- `httk-core`, `httk-io`, `httk-atomistic`, `httk-store`, `httk-serve`,
   `httk-analyse`, and `httk-workflow` must all be published (at versions
   matching the ranges in `pyproject.toml`) before the `httk2` release is
   installable.

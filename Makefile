@@ -7,7 +7,7 @@ DIST_DIR ?= dist
 # already present in the venv.
 MODULES_DIR ?= modules
 HTTK_GIT_BASE ?= git@github.com:httk
-HTTK_MODULES ?= httk-core httk-io httk-data httk-atomistic httk-analyse httk-serve httk-workflow
+HTTK_MODULES ?= httk-core httk-io httk-store httk-atomistic httk-analyse httk-serve httk-workflow
 
 # Run "git $(1)" in every checked-out module repository (on whatever branch
 # each is on); report missing checkouts and fail at the end if anything failed.
