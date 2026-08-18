@@ -11,7 +11,7 @@ The metapackage must be released **after** the modules it depends on already
 exist on PyPI at compatible versions. An `httk2` release resolves only if its
 `Requires-Dist` entries can be satisfied from the index:
 
-- `httk-core`, `httk-io`, `httk-atomistic`, `httk-store`, `httk-serve`,
+- `httk-core`, `httk-atomistic`, `httk-store`, `httk-serve`,
   `httk-analyse`, and `httk-workflow` must all be published (at versions
   matching the ranges in `pyproject.toml`) before the `httk2` release is
   installable.
@@ -75,7 +75,7 @@ python -m venv /tmp/httk2-test
 /tmp/httk2-test/bin/python -m pip install \
   --index-url https://test.pypi.org/simple/ \
   --extra-index-url https://pypi.org/simple/ httk2==2.0.0
-/tmp/httk2-test/bin/python -c "import httk.core, httk.io, httk.atomistic, httk.analyse.generic, httk.analyse.matsci"
+/tmp/httk2-test/bin/python -c "import httk.core, httk.atomistic, httk.atomistic.io, httk.analyse.generic, httk.analyse.matsci"
 ```
 
 Replace `2.0.0` with the version being tested.

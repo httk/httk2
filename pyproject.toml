@@ -16,7 +16,6 @@ requires-python = ">=3.12"
 authors = [{ name = "Rickard Armiento", email = "rickard-gpg@armiento.net" }]
 dependencies = [
   "httk-core[default]>=2.0.2,<3",
-  "httk-io[default]>=0.2.0,<1",
   "httk-atomistic[default]>=0.2.0,<1",
   "httk-store[default]>=0.2.0,<1",
   "httk-serve[default]>=0.2.0,<1",
