@@ -4,11 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "httk2"
-# While httk2 is in prerelease it doesn't follow semver (or more exactly,
-# it follows semver 0.* semantics, where the non-major versions do not need to adhere to semver).
-# Its minor version should always stay 0, and only the patch-level be increased.
 version = "2.1.0"
-description = "The high-throughput toolkit (httk₂) for materials science"
+description = "The high-throughput toolkit (httk₂) is a modular Python toolkit for materials science. The httk2 metapackage installs the standard components of httk₂."
 readme = "README.md"
 license = "AGPL-3.0-or-later"
 license-files = ["LICENSE"]
