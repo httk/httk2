@@ -10,7 +10,9 @@ HTTK_GIT_BASE ?= git@github.com:httk
 HTTK_MODULES ?= httk-core httk-store httk-atomistic httk-analyse httk-serve httk-workflow
 HTTK_DOCS_REPOSITORY ?= httk.github.io
 HTTK_REPOSITORIES ?= $(HTTK_MODULES) $(HTTK_DOCS_REPOSITORY)
-HTTK_RELEASE_PATHS = $(addprefix $(MODULES_DIR)/,$(HTTK_REPOSITORIES)) .
+HTTK_MANAGED_REFS = $(foreach r,$(HTTK_MODULES),$(MODULES_DIR)/$(r):develop) \
+	$(MODULES_DIR)/$(HTTK_DOCS_REPOSITORY):main
+HTTK_RELEASE_REFS = $(HTTK_MANAGED_REFS) .:main
 GIT_USER_NAME ?= Rickard Armiento
 GIT_USER_EMAIL ?= rickard-gpg@armiento.net
 READ_PROJECT_VERSION = $(PYTHON) -c 'import sys, tomllib; print(tomllib.load(sys.stdin.buffer)["project"]["version"])'
@@ -33,18 +35,19 @@ endef
 
 checkout:
 	@mkdir -p $(MODULES_DIR)
-	@for r in $(HTTK_REPOSITORIES); do \
-	  if [ -d "$(MODULES_DIR)/$$r/.git" ]; then \
-	    echo "== $$r: switching to develop"; \
-	    if git -C "$(MODULES_DIR)/$$r" show-ref --verify --quiet refs/heads/develop; then \
-	      git -C "$(MODULES_DIR)/$$r" switch develop || exit 1; \
+	@for spec in $(HTTK_MANAGED_REFS); do \
+	  repo=$${spec%:*}; branch=$${spec#*:}; name=$$(basename "$$repo"); \
+	  if [ -d "$$repo/.git" ]; then \
+	    echo "== $$name: switching to $$branch"; \
+	    if git -C "$$repo" show-ref --verify --quiet "refs/heads/$$branch"; then \
+	      git -C "$$repo" switch "$$branch" || exit 1; \
 	    else \
-	      git -C "$(MODULES_DIR)/$$r" fetch origin develop || exit 1; \
-	      git -C "$(MODULES_DIR)/$$r" switch --track -c develop origin/develop || exit 1; \
+	      git -C "$$repo" fetch origin "$$branch" || exit 1; \
+	      git -C "$$repo" switch --track -c "$$branch" "origin/$$branch" || exit 1; \
 	    fi; \
 	  else \
-	    echo "== $$r: cloning develop"; \
-	    git clone --branch develop "$(HTTK_GIT_BASE)/$$r.git" "$(MODULES_DIR)/$$r" || exit 1; \
+	    echo "== $$name: cloning $$branch"; \
+	    git clone --branch "$$branch" "$(HTTK_GIT_BASE)/$$name.git" "$$repo" || exit 1; \
 	  fi; \
 	done
 
@@ -52,14 +55,17 @@ fetch:
 	$(call git_foreach,fetch)
 
 pull: checkout
-	@if git show-ref --verify --quiet refs/heads/develop; then \
-	  git switch develop; \
+	@if git show-ref --verify --quiet refs/heads/main; then \
+	  git switch main; \
 	else \
-	  git fetch origin develop; \
-	  git switch --track -c develop origin/develop; \
+	  git fetch origin main; \
+	  git switch --track -c main origin/main; \
 	fi
-	@git pull --ff-only origin develop
-	$(call git_foreach,pull --ff-only origin develop)
+	@git pull --ff-only origin main
+	@for spec in $(HTTK_MANAGED_REFS); do \
+	  repo=$${spec%:*}; branch=$${spec#*:}; \
+	  git -C "$$repo" pull --ff-only origin "$$branch" || exit 1; \
+	done
 
 push:
 	$(call git_foreach,push)
@@ -101,10 +107,11 @@ release-prepare:
 	@$(MAKE) release-check
 
 release-check-all:
-	@for repo in $(HTTK_RELEASE_PATHS); do \
+	@for spec in $(HTTK_RELEASE_REFS); do \
+	  repo=$${spec%:*}; branch=$${spec#*:}; \
 	  test -d "$$repo/.git" || { echo "== $$repo: not checked out (run 'make pull')"; exit 1; }; \
-	  test "$$(git -C "$$repo" branch --show-current)" = develop || { \
-	    echo "== $$repo: develop is not checked out (run 'make pull')"; exit 1; }; \
+	  test "$$(git -C "$$repo" branch --show-current)" = "$$branch" || { \
+	    echo "== $$repo: $$branch is not checked out (run 'make pull')"; exit 1; }; \
 	  test -z "$$(git -C "$$repo" status --porcelain)" || { \
 	    echo "== $$repo: worktree is not clean"; exit 1; }; \
 	done
@@ -171,33 +178,37 @@ release-prepare-all: release-check-all
 # This operates on refs rather than checking out main. Each repository push is
 # atomic, so its main branch and release tag are published together.
 release-merge-tag-and-push-main:
-	@set -eu; for repo in $(HTTK_RELEASE_PATHS); do \
+	@set -eu; for spec in $(HTTK_RELEASE_REFS); do \
+	  repo=$${spec%:*}; branch=$${spec#*:}; \
 	  name="$$(basename "$$(cd "$$repo" && pwd)")"; \
 	  test -d "$$repo/.git" || { echo "== $$name: not checked out (run 'make pull')"; exit 1; }; \
 	  echo "== $$name: fetching release refs"; \
-	  git -C "$$repo" fetch origin main develop --tags; \
-	  version="$$(git -C "$$repo" show develop:pyproject.toml | $(READ_PROJECT_VERSION))"; \
+	  refs=main; test "$$branch" = main || refs="$$refs $$branch"; \
+	  git -C "$$repo" fetch origin $$refs --tags; \
+	  version="$$(git -C "$$repo" show "$$branch:pyproject.toml" | $(READ_PROJECT_VERSION))"; \
 	  tag="v$$version"; \
 	  if git -C "$$repo" ls-remote --exit-code --tags origin "refs/tags/$$tag" >/dev/null 2>&1; then \
 	    echo "== $$name: reusing existing remote $$tag"; continue; \
 	  fi; \
-	  git -C "$$repo" merge-base --is-ancestor origin/develop develop || { \
-	    echo "== $$name: local develop is not based on origin/develop"; exit 1; }; \
-	  git -C "$$repo" merge-base --is-ancestor origin/main develop || { \
-	    echo "== $$name: develop cannot be fast-forwarded onto main"; exit 1; }; \
+	  git -C "$$repo" merge-base --is-ancestor "origin/$$branch" "$$branch" || { \
+	    echo "== $$name: local $$branch is not based on origin/$$branch"; exit 1; }; \
+	  test "$$branch" = main || git -C "$$repo" merge-base --is-ancestor origin/main "$$branch" || { \
+	    echo "== $$name: $$branch cannot be fast-forwarded onto main"; exit 1; }; \
 	  ! git -C "$$repo" show-ref --verify --quiet "refs/tags/$$tag" || { \
 	    echo "== $$name: tag $$tag already exists"; exit 1; }; \
 	done
-	@set -eu; for repo in $(HTTK_RELEASE_PATHS); do \
+	@set -eu; for spec in $(HTTK_RELEASE_REFS); do \
+	  repo=$${spec%:*}; branch=$${spec#*:}; \
 	  name="$$(basename "$$(cd "$$repo" && pwd)")"; \
-	  version="$$(git -C "$$repo" show develop:pyproject.toml | $(READ_PROJECT_VERSION))"; \
+	  version="$$(git -C "$$repo" show "$$branch:pyproject.toml" | $(READ_PROJECT_VERSION))"; \
 	  tag="v$$version"; \
 	  if git -C "$$repo" ls-remote --exit-code --tags origin "refs/tags/$$tag" >/dev/null 2>&1; then \
 	    echo "== $$name: keeping existing $$tag"; continue; \
 	  fi; \
 	  echo "== $$name: signing and pushing $$tag"; \
 	  git -C "$$repo" -c user.name="$(GIT_USER_NAME)" -c user.email="$(GIT_USER_EMAIL)" \
-	    tag -s -m "$$tag" "$$tag" develop; \
-	  git -C "$$repo" push --atomic origin develop:develop develop:main "refs/tags/$$tag" || { \
+	    tag -s -m "$$tag" "$$tag" "$$branch"; \
+	  if test "$$branch" = develop; then refs="develop:develop develop:main"; else refs="main:main"; fi; \
+	  git -C "$$repo" push --atomic origin $$refs "refs/tags/$$tag" || { \
 	    git -C "$$repo" tag -d "$$tag"; exit 1; }; \
 	done

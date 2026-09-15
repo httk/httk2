@@ -54,16 +54,17 @@ This repository's `Makefile` doubles as a small workspace manager for working
 on all *httk₂* modules and the aggregate documentation site at once:
 
 ```console
-make checkout   # clone missing repositories and check out develop
+make checkout   # clone missing repositories and check out release branches
 make fetch      # git fetch in every managed repository
-make pull       # check out and fast-forward every develop branch
+make pull       # check out and fast-forward every release branch
 make push       # git push in every managed repository
 make install    # editable-install every module (with its default extra)
                 # into the currently activated virtual environment
 ```
 
-`checkout` clones over SSH from `git@github.com:httk/...` and switches existing
-repositories to `develop`. `pull` does the same for this metapackage checkout.
+`checkout` clones over SSH from `git@github.com:httk/...`. It uses `develop`
+for the six module repositories and `main` for `httk.github.io`; `pull` also
+keeps this metapackage checkout on `main`.
 `fetch` and `push` continue past individual failures and exit non-zero if any
 repository failed.
 `install` refuses to run without an activated virtual environment, and installs

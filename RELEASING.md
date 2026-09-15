@@ -47,10 +47,10 @@ The module repositories, aggregate documentation, and `httk2` metapackage can
 be prepared and published together from this repository. The managed
 repositories are checked out under `modules/` by default.
 
-1. Update and commit each repository's `pyproject.toml` on its `develop`
-   branch, including the intended `project.version` and released dependency
-   floors. Do this for the six runtime modules, `httk.github.io`, and `httk2`.
-2. Check out or update every `develop` branch:
+1. Update and commit each repository's `pyproject.toml`, including the intended
+   `project.version` and released dependency floors. Use `develop` for the six
+   runtime modules and `main` for `httk.github.io` and `httk2`.
+2. Check out or update those branches:
 
    ```console
    make pull
@@ -74,20 +74,21 @@ repositories are checked out under `modules/` by default.
    it does, the aggregate target stops; commit those exact changes on
    `develop`, run `make pull`, and repeat this step.
 
-4. If every preparation succeeds, fast-forward every remote `main` to
-   `develop`, create each signed `v<project.version>` tag, and atomically push
-   that repository's `develop`, `main`, and tag refs:
+4. If every preparation succeeds, fast-forward each runtime module's remote
+   `main` to `develop`, create each signed `v<project.version>` tag, and push
+   the release refs atomically within each repository:
 
    ```console
    make release-merge-tag-and-push-main
    ```
 
    Runtime modules are pushed first, followed by `httk.github.io` and `httk2`.
-   The target updates Git refs directly and does not check out `main` or read
-   the worktrees. It reads each version from the committed `develop` ref and
-   stops before creating any tags if local `develop` is not based on
-   `origin/develop`, a main branch cannot be fast-forwarded, or a release tag
-   already exists.
+   The target updates Git refs directly and does not change branches or read
+   the worktrees. Runtime versions and tags come from `develop`, which is also
+   pushed to `main`; documentation and metapackage versions and tags come from
+   `main`. It stops before creating any tags if a local release branch is not
+   based on its remote, a runtime `main` cannot be fast-forwarded, or a release
+   tag already exists.
 
    Repositories whose `v<project.version>` tags already exist remotely are
    left unchanged. This permits one block release to combine unchanged 2.1.0
