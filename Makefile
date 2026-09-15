@@ -66,6 +66,8 @@ pull: checkout
 	  repo=$${spec%:*}; branch=$${spec#*:}; \
 	  git -C "$$repo" pull --ff-only origin "$$branch" || exit 1; \
 	done
+	@git -C "$(MODULES_DIR)/$(HTTK_DOCS_REPOSITORY)" submodule sync --recursive
+	@git -C "$(MODULES_DIR)/$(HTTK_DOCS_REPOSITORY)" submodule update --init --recursive
 
 push:
 	@git push
@@ -134,7 +136,6 @@ release-prepare-all:
 	  echo "== Commit and sign the updated release inputs, then rerun make release-prepare-all"; exit 1; }
 	@set -eu; \
 	  site="$(MODULES_DIR)/$(HTTK_DOCS_REPOSITORY)"; \
-	  git -C "$$site" submodule update --init; \
 	  temporary_tags=""; \
 	  cleanup_tags() { \
 	    for item in $$temporary_tags; do \
@@ -146,6 +147,8 @@ release-prepare-all:
 	  for r in $(HTTK_MODULES); do \
 	    source="$$(cd "$(MODULES_DIR)/$$r" && pwd)"; \
 	    nested="$$site/submodules/$$r"; \
+	    test -e "$$nested/.git" || { \
+	      echo "== $(HTTK_DOCS_REPOSITORY): $$r is not initialized (run 'make pull')"; exit 1; }; \
 	    version="$$($(READ_PROJECT_VERSION) < "$$source/pyproject.toml")"; \
 	    tag="v$$version"; \
 	    if git -C "$$source" show-ref --verify --quiet "refs/tags/$$tag"; then \

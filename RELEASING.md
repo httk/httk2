@@ -56,6 +56,10 @@ repositories are checked out under `modules/` by default.
    make pull
    ```
 
+   This also initializes the `httk.github.io` submodules at the commits recorded
+   by that repository. Later preparation repins them from the local runtime
+   checkouts and does not contact remote Git repositories.
+
 3. Run the coordinated release preparation:
 
    ```console
@@ -63,9 +67,11 @@ repositories are checked out under `modules/` by default.
    ```
 
    For each new runtime version, this refreshes its documentation lock and
-   inventories without running the expensive release gates. If these inputs
-   change, the target stops: review, commit, and sign them on `develop`, then
-   repeat this step. Once the runtime repositories are clean, it pins the
+   inventories without running the expensive release gates. These refreshes
+   use package indexes and published documentation but do not contact remote
+   Git repositories. If the inputs change, the target stops: review, commit,
+   and sign them on `develop`, then repeat this step. Once the runtime
+   repositories are clean, it pins the
    `httk.github.io` submodules to the selected release commits, regenerates its
    ecosystem manifest and documentation lock, and commits that snapshot.
 
@@ -81,7 +87,9 @@ repositories are checked out under `modules/` by default.
    make release-check-all
    ```
 
-   The target performs no remote Git operations. It requires every candidate
+   The target performs no remote Git operations, though its isolated package
+   installation and documentation gates use package indexes and published
+   documentation. It requires every candidate
    branch to match the local `origin/<branch>` ref recorded by the preceding
    push. Each new runtime version runs its normal tests on Python 3.12, 3.13,
    and 3.14, along with its CI, documentation, distribution, dependency, and
