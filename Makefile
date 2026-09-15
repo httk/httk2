@@ -183,16 +183,17 @@ release-check-all:
 	    echo "== $$repo: $$branch is not checked out (run 'make pull')"; exit 1; }; \
 	  test -z "$$(git -C "$$repo" status --porcelain)" || { \
 	    echo "== $$repo: worktree is not clean"; exit 1; }; \
-	  git -C "$$repo" fetch origin "$$branch" --tags || exit 1; \
+	  git -C "$$repo" show-ref --verify --quiet "refs/remotes/origin/$$branch" || { \
+	    echo "== $$repo: origin/$$branch is unavailable locally (run 'make pull')"; exit 1; }; \
 	  test "$$(git -C "$$repo" rev-parse "$$branch")" = "$$(git -C "$$repo" rev-parse "origin/$$branch")" || { \
-	    echo "== $$repo: $$branch is not pushed exactly to origin/$$branch (run 'make push')"; exit 1; }; \
+	    echo "== $$repo: $$branch differs from local origin/$$branch (run 'make push')"; exit 1; }; \
 	done
 	@for r in $(HTTK_MODULES); do \
 	  repo="$(MODULES_DIR)/$$r"; \
 	  version="$$($(READ_PROJECT_VERSION) < "$$repo/pyproject.toml")" || exit 1; \
 	  tag="v$$version"; \
-	  if git -C "$$repo" ls-remote --exit-code --tags origin "refs/tags/$$tag" >/dev/null 2>&1; then \
-	    echo "== $$r: reusing existing remote $$tag"; \
+	  if git -C "$$repo" show-ref --verify --quiet "refs/tags/$$tag"; then \
+	    echo "== $$r: reusing existing $$tag"; \
 	  else \
 	    echo "== $$r: checking $$tag"; \
 	    $(MAKE) -C "$$repo" release-prepare VERSION="$$tag" || exit 1; \
@@ -202,7 +203,6 @@ release-check-all:
 	done
 	@set -eu; \
 	  site="$(MODULES_DIR)/$(HTTK_DOCS_REPOSITORY)"; \
-	  git -C "$$site" submodule update --init; \
 	  temporary_tags=""; \
 	  cleanup_tags() { \
 	    for item in $$temporary_tags; do \
@@ -214,6 +214,8 @@ release-check-all:
 	  for r in $(HTTK_MODULES); do \
 	    source="$$(cd "$(MODULES_DIR)/$$r" && pwd)"; \
 	    nested="$$site/submodules/$$r"; \
+	    test -e "$$nested/.git" || { \
+	      echo "== $(HTTK_DOCS_REPOSITORY): $$r is not initialized; rerun preparation"; exit 1; }; \
 	    version="$$($(READ_PROJECT_VERSION) < "$$source/pyproject.toml")"; \
 	    tag="v$$version"; \
 	    if git -C "$$source" show-ref --verify --quiet "refs/tags/$$tag"; then \
@@ -223,7 +225,8 @@ release-check-all:
 	    fi; \
 	    test "$$(git -C "$$site" rev-parse "HEAD:submodules/$$r")" = "$$commit" || { \
 	      echo "== $(HTTK_DOCS_REPOSITORY): $$r is not pinned to $$tag; rerun preparation"; exit 1; }; \
-	    git -C "$$nested" checkout --detach "$$commit"; \
+	    test "$$(git -C "$$nested" rev-parse HEAD)" = "$$commit" || { \
+	      echo "== $(HTTK_DOCS_REPOSITORY): $$r checkout does not match its pin; rerun preparation"; exit 1; }; \
 	    if git -C "$$nested" show-ref --verify --quiet "refs/tags/$$tag"; then \
 	      test "$$(git -C "$$nested" rev-parse "$$tag^{}")" = "$$commit" || { \
 	        echo "== $$r: $$tag does not identify the pinned commit"; exit 1; }; \

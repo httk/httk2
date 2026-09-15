@@ -81,12 +81,14 @@ repositories are checked out under `modules/` by default.
    make release-check-all
    ```
 
-   The target requires every candidate branch to match its remote exactly.
-   Each new runtime version runs its normal tests on Python 3.12, 3.13, and
-   3.14, along with its CI, documentation, distribution, dependency, and
+   The target performs no remote Git operations. It requires every candidate
+   branch to match the local `origin/<branch>` ref recorded by the preceding
+   push. Each new runtime version runs its normal tests on Python 3.12, 3.13,
+   and 3.14, along with its CI, documentation, distribution, dependency, and
    isolated-wheel checks. It then checks the pinned aggregate documentation
-   snapshot and the `httk2` distribution. Already released versions are
-   reused without retesting unreleased commits beyond their tags.
+   snapshot and the `httk2` distribution. Already released versions are reused
+   without retesting unreleased commits beyond their tags. The final release
+   target refreshes and validates remote refs immediately before publishing.
 
 6. If every check succeeds, fast-forward each runtime module's remote
    `main` to `develop`, create each signed `v<project.version>` tag, and push
