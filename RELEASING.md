@@ -43,57 +43,65 @@ reserve the project name before then.
 
 ## Prepare and check a release
 
-The module repositories can be prepared and published together from this
-repository. The aggregate targets operate on the repositories listed in
-`HTTK_MODULES` under `modules/` by default.
+The module repositories, aggregate documentation, and `httk2` metapackage can
+be prepared and published together from this repository. The managed
+repositories are checked out under `modules/` by default.
 
-1. Update and commit each module's `pyproject.toml` on its `develop` branch,
-   including the intended `project.version` and released dependency floors.
-2. Check out or update every module's `develop` branch:
+1. Update and commit each repository's `pyproject.toml` on its `develop`
+   branch, including the intended `project.version` and released dependency
+   floors. Do this for the six runtime modules, `httk.github.io`, and `httk2`.
+2. Check out or update every `develop` branch:
 
    ```console
    make pull
    ```
 
-3. Run each module's isolated release preparation with the version read from
-   its own `pyproject.toml`:
+3. Run the coordinated release preparation:
 
    ```console
    make release-prepare-all
    ```
 
-   Release preparation may refresh committed documentation inputs. If it does,
-   the aggregate target stops; commit and push those exact changes on
+   This runs each runtime module's isolated release preparation with the
+   version read from its own `pyproject.toml`. It then pins the
+   `httk.github.io` submodules to those exact release commits, regenerates and
+   checks its ecosystem manifest and documentation lock, and commits the
+   resulting documentation snapshot. Finally, it checks the `httk2`
+   distribution using its own `project.version`.
+
+   Runtime release preparation may refresh committed documentation inputs. If
+   it does, the aggregate target stops; commit those exact changes on
    `develop`, run `make pull`, and repeat this step.
 
-4. If every preparation succeeds, fast-forward each remote `main` to
-   `develop`, create its signed `v<project.version>` tag, and atomically push
-   that repository's branch and tag:
+4. If every preparation succeeds, fast-forward every remote `main` to
+   `develop`, create each signed `v<project.version>` tag, and atomically push
+   that repository's `develop`, `main`, and tag refs:
 
    ```console
    make release-merge-tag-and-push-main
    ```
 
-   This target updates Git refs directly and does not check out `main` or
-   otherwise read or change the module worktrees. It reads each version from
-   the committed `develop` ref and stops before creating any tags if local
-   `develop` differs from `origin/develop`, a main branch cannot be
-   fast-forwarded, or a release tag already exists.
+   Runtime modules are pushed first, followed by `httk.github.io` and `httk2`.
+   The target updates Git refs directly and does not check out `main` or read
+   the worktrees. It reads each version from the committed `develop` ref and
+   stops before creating any tags if local `develop` is not based on
+   `origin/develop`, a main branch cannot be fast-forwarded, or a release tag
+   already exists.
 
-5. In each module's GitHub repository, create and publish a release using the
-   existing version tag. This starts its package publication workflow.
+5. In GitHub, create and publish releases using the existing tags. Publish the
+   six runtime module releases in dependency order and wait for their PyPI
+   uploads before publishing the `httk2` release. The `httk.github.io` tag push
+   starts the versioned aggregate documentation deployment directly.
 
 The pushes are atomic within each repository. Git cannot make pushes across
 separate repositories atomic, so if a later remote push fails, retry it after
 checking which earlier repositories were already published.
 
-To prepare the `httk2` metapackage itself after its module releases exist on
-PyPI, update `project.version` in this repository's `pyproject.toml`. From a
-Python 3.12 environment, install the release tools and build the distribution:
+To check only the `httk2` metapackage, install its release tools and run:
 
 ```console
 python -m pip install -e ".[release]"
-make release-check
+make release-prepare VERSION=v2.1.0
 ```
 
 This builds an isolated sdist/wheel and runs strict package-metadata checks. The
