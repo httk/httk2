@@ -29,7 +29,7 @@ define git_foreach
 endef
 
 .PHONY: clean dist-clean dist dist-check release-check release-prepare checkout fetch pull push \
-	install release-prepare-all release-merge-tag-and-push-main
+	install release-check-all release-prepare-all release-merge-tag-and-push-main
 
 checkout:
 	@mkdir -p $(MODULES_DIR)
@@ -100,7 +100,7 @@ release-prepare:
 	    echo "error: VERSION=$(VERSION) does not match v$$version"; exit 1; }
 	@$(MAKE) release-check
 
-release-prepare-all:
+release-check-all:
 	@for repo in $(HTTK_RELEASE_PATHS); do \
 	  test -d "$$repo/.git" || { echo "== $$repo: not checked out (run 'make pull')"; exit 1; }; \
 	  test "$$(git -C "$$repo" branch --show-current)" = develop || { \
@@ -111,10 +111,15 @@ release-prepare-all:
 	@for r in $(HTTK_MODULES); do \
 	  repo="$(MODULES_DIR)/$$r"; \
 	  version="$$($(READ_PROJECT_VERSION) < "$$repo/pyproject.toml")" || exit 1; \
-	  echo "== $$r: preparing v$$version"; \
-	  $(MAKE) -C "$$repo" release-prepare VERSION="v$$version" || exit 1; \
-	  test -z "$$(git -C "$$repo" status --porcelain)" || { \
-	    echo "== $$r: release preparation updated files; commit and push them, then rerun"; exit 1; }; \
+	  tag="v$$version"; \
+	  if git -C "$$repo" show-ref --verify --quiet "refs/tags/$$tag"; then \
+	    echo "== $$r: reusing existing $$tag"; \
+	  else \
+	    echo "== $$r: preparing $$tag"; \
+	    $(MAKE) -C "$$repo" release-prepare VERSION="$$tag" || exit 1; \
+	    test -z "$$(git -C "$$repo" status --porcelain)" || { \
+	      echo "== $$r: release preparation updated files; commit and push them, then rerun"; exit 1; }; \
+	  fi; \
 	done
 	@set -eu; \
 	  site="$(MODULES_DIR)/$(HTTK_DOCS_REPOSITORY)"; \
@@ -130,9 +135,13 @@ release-prepare-all:
 	  for r in $(HTTK_MODULES); do \
 	    source="$$(cd "$(MODULES_DIR)/$$r" && pwd)"; \
 	    nested="$$site/submodules/$$r"; \
-	    commit="$$(git -C "$$source" rev-parse develop)"; \
 	    version="$$($(READ_PROJECT_VERSION) < "$$source/pyproject.toml")"; \
 	    tag="v$$version"; \
+	    if git -C "$$source" show-ref --verify --quiet "refs/tags/$$tag"; then \
+	      commit="$$(git -C "$$source" rev-parse "$$tag^{}")"; \
+	    else \
+	      commit="$$(git -C "$$source" rev-parse develop)"; \
+	    fi; \
 	    git -C "$$nested" fetch "$$source" develop --tags; \
 	    git -C "$$nested" checkout --detach "$$commit"; \
 	    if git -C "$$nested" show-ref --verify --quiet "refs/tags/$$tag"; then \
@@ -157,6 +166,8 @@ release-prepare-all:
 	  echo "== httk2: preparing v$$version"; \
 	  $(MAKE) release-prepare VERSION="v$$version"
 
+release-prepare-all: release-check-all
+
 # This operates on refs rather than checking out main. Each repository push is
 # atomic, so its main branch and release tag are published together.
 release-merge-tag-and-push-main:
@@ -165,12 +176,15 @@ release-merge-tag-and-push-main:
 	  test -d "$$repo/.git" || { echo "== $$name: not checked out (run 'make pull')"; exit 1; }; \
 	  echo "== $$name: fetching release refs"; \
 	  git -C "$$repo" fetch origin main develop --tags; \
+	  version="$$(git -C "$$repo" show develop:pyproject.toml | $(READ_PROJECT_VERSION))"; \
+	  tag="v$$version"; \
+	  if git -C "$$repo" ls-remote --exit-code --tags origin "refs/tags/$$tag" >/dev/null 2>&1; then \
+	    echo "== $$name: reusing existing remote $$tag"; continue; \
+	  fi; \
 	  git -C "$$repo" merge-base --is-ancestor origin/develop develop || { \
 	    echo "== $$name: local develop is not based on origin/develop"; exit 1; }; \
 	  git -C "$$repo" merge-base --is-ancestor origin/main develop || { \
 	    echo "== $$name: develop cannot be fast-forwarded onto main"; exit 1; }; \
-	  version="$$(git -C "$$repo" show develop:pyproject.toml | $(READ_PROJECT_VERSION))"; \
-	  tag="v$$version"; \
 	  ! git -C "$$repo" show-ref --verify --quiet "refs/tags/$$tag" || { \
 	    echo "== $$name: tag $$tag already exists"; exit 1; }; \
 	done
@@ -178,6 +192,9 @@ release-merge-tag-and-push-main:
 	  name="$$(basename "$$(cd "$$repo" && pwd)")"; \
 	  version="$$(git -C "$$repo" show develop:pyproject.toml | $(READ_PROJECT_VERSION))"; \
 	  tag="v$$version"; \
+	  if git -C "$$repo" ls-remote --exit-code --tags origin "refs/tags/$$tag" >/dev/null 2>&1; then \
+	    echo "== $$name: keeping existing $$tag"; continue; \
+	  fi; \
 	  echo "== $$name: signing and pushing $$tag"; \
 	  git -C "$$repo" -c user.name="$(GIT_USER_NAME)" -c user.email="$(GIT_USER_EMAIL)" \
 	    tag -s -m "$$tag" "$$tag" develop; \

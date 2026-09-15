@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "httk2"
-version = "2.1.0"
+version = "2.1.1"
 description = "The high-throughput toolkit (httk₂) is a modular Python toolkit for materials science. The httk2 metapackage installs the standard components of httk₂."
 readme = "README.md"
 license = "AGPL-3.0-or-later"

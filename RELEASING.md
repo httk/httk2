@@ -59,11 +59,12 @@ repositories are checked out under `modules/` by default.
 3. Run the coordinated release preparation:
 
    ```console
-   make release-prepare-all
+   make release-check-all
    ```
 
-   This runs each runtime module's isolated release preparation with the
-   version read from its own `pyproject.toml`. It then pins the
+   For a version that is already tagged, this reuses the released commit and
+   does not rerun its release preparation. For a new version, it runs the
+   runtime module's isolated release preparation. It then pins the
    `httk.github.io` submodules to those exact release commits, regenerates and
    checks its ecosystem manifest and documentation lock, and commits the
    resulting documentation snapshot. Finally, it checks the `httk2`
@@ -88,6 +89,11 @@ repositories are checked out under `modules/` by default.
    `origin/develop`, a main branch cannot be fast-forwarded, or a release tag
    already exists.
 
+   Repositories whose `v<project.version>` tags already exist remotely are
+   left unchanged. This permits one block release to combine unchanged 2.1.0
+   modules with new 2.1.1 modules. `release-prepare-all` remains an alias for
+   `release-check-all`.
+
 5. In GitHub, create and publish releases using the existing tags. Publish the
    six runtime module releases in dependency order and wait for their PyPI
    uploads before publishing the `httk2` release. The `httk.github.io` tag push
@@ -101,7 +107,7 @@ To check only the `httk2` metapackage, install its release tools and run:
 
 ```console
 python -m pip install -e ".[release]"
-make release-prepare VERSION=v2.1.0
+make release-prepare VERSION=v2.1.1
 ```
 
 This builds an isolated sdist/wheel and runs strict package-metadata checks. The
