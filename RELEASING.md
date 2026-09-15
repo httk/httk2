@@ -59,20 +59,23 @@ repositories are checked out under `modules/` by default.
 3. Run the coordinated release preparation:
 
    ```console
-   make release-check-all
+   make release-prepare-all
    ```
 
    For a version that is already tagged, this reuses the released commit and
    does not rerun its release preparation. For a new version, it runs the
-   runtime module's isolated release preparation. It then pins the
+   runtime module's complete isolated release preparation, including normal
+   tests on Python 3.12, 3.13, and 3.14. It then pins the
    `httk.github.io` submodules to those exact release commits, regenerates and
    checks its ecosystem manifest and documentation lock, and commits the
    resulting documentation snapshot. Finally, it checks the `httk2`
    distribution using its own `project.version`.
 
+   `release-check-all` is an alias for this same operation; do not run both.
+
    Runtime release preparation may refresh committed documentation inputs. If
    it does, the aggregate target stops; commit those exact changes on
-   `develop`, run `make pull`, and repeat this step.
+   `develop` and repeat this step.
 
 4. If every preparation succeeds, fast-forward each runtime module's remote
    `main` to `develop`, create each signed `v<project.version>` tag, and push
@@ -92,8 +95,8 @@ repositories are checked out under `modules/` by default.
 
    Repositories whose `v<project.version>` tags already exist remotely are
    left unchanged. This permits one block release to combine unchanged 2.1.0
-   modules with new 2.1.1 modules. `release-prepare-all` remains an alias for
-   `release-check-all`.
+   modules with new 2.1.1 modules. Do not run `make push` between preparation
+   and this step: this target pushes each release branch together with its tag.
 
 5. In GitHub, create and publish releases using the existing tags. Publish the
    six runtime module releases in dependency order and wait for their PyPI

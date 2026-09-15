@@ -106,7 +106,7 @@ release-prepare:
 	    echo "error: VERSION=$(VERSION) does not match v$$version"; exit 1; }
 	@$(MAKE) release-check
 
-release-check-all:
+release-prepare-all:
 	@for spec in $(HTTK_RELEASE_REFS); do \
 	  repo=$${spec%:*}; branch=$${spec#*:}; \
 	  test -d "$$repo/.git" || { echo "== $$repo: not checked out (run 'make pull')"; exit 1; }; \
@@ -125,7 +125,7 @@ release-check-all:
 	    echo "== $$r: preparing $$tag"; \
 	    $(MAKE) -C "$$repo" release-prepare VERSION="$$tag" || exit 1; \
 	    test -z "$$(git -C "$$repo" status --porcelain)" || { \
-	      echo "== $$r: release preparation updated files; commit and push them, then rerun"; exit 1; }; \
+	      echo "== $$r: release preparation updated files; commit them, then rerun"; exit 1; }; \
 	  fi; \
 	done
 	@set -eu; \
@@ -173,7 +173,7 @@ release-check-all:
 	  echo "== httk2: preparing v$$version"; \
 	  $(MAKE) release-prepare VERSION="v$$version"
 
-release-prepare-all: release-check-all
+release-check-all: release-prepare-all
 
 # This operates on refs rather than checking out main. Each repository push is
 # atomic, so its main branch and release tag are published together.
