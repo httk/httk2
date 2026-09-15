@@ -68,6 +68,7 @@ pull: checkout
 	done
 
 push:
+	@git push
 	$(call git_foreach,push)
 
 install:
@@ -115,19 +116,22 @@ release-prepare-all:
 	  test -z "$$(git -C "$$repo" status --porcelain)" || { \
 	    echo "== $$repo: worktree is not clean"; exit 1; }; \
 	done
-	@for r in $(HTTK_MODULES); do \
+	@changed=0; for r in $(HTTK_MODULES); do \
 	  repo="$(MODULES_DIR)/$$r"; \
 	  version="$$($(READ_PROJECT_VERSION) < "$$repo/pyproject.toml")" || exit 1; \
 	  tag="v$$version"; \
 	  if git -C "$$repo" show-ref --verify --quiet "refs/tags/$$tag"; then \
 	    echo "== $$r: reusing existing $$tag"; \
 	  else \
-	    echo "== $$r: preparing $$tag"; \
-	    $(MAKE) -C "$$repo" release-prepare VERSION="$$tag" || exit 1; \
-	    test -z "$$(git -C "$$repo" status --porcelain)" || { \
-	      echo "== $$r: release preparation updated files; commit them, then rerun"; exit 1; }; \
+	    echo "== $$r: refreshing release inputs for $$tag"; \
+	    $(MAKE) -C "$$repo" docs-lock docs-inventories || exit 1; \
+	    if test -n "$$(git -C "$$repo" status --porcelain)"; then \
+	      echo "== $$r: release inputs updated"; changed=1; \
+	    fi; \
 	  fi; \
-	done
+	done; \
+	test $$changed = 0 || { \
+	  echo "== Commit and sign the updated release inputs, then rerun make release-prepare-all"; exit 1; }
 	@set -eu; \
 	  site="$(MODULES_DIR)/$(HTTK_DOCS_REPOSITORY)"; \
 	  git -C "$$site" submodule update --init; \
@@ -161,7 +165,7 @@ release-prepare-all:
 	    git -C "$$site" add "submodules/$$r"; \
 	  done; \
 	  version="$$($(READ_PROJECT_VERSION) < "$$site/pyproject.toml")"; \
-	  $(MAKE) -C "$$site" release-prepare VERSION="v$$version"; \
+	  $(MAKE) -C "$$site" ecosystem-manifest-release docs-lock; \
 	  git -C "$$site" add docs/ecosystem.json docs/requirements.lock; \
 	  if ! git -C "$$site" diff --cached --quiet; then \
 	    git -C "$$site" -c user.name="$(GIT_USER_NAME)" -c user.email="$(GIT_USER_EMAIL)" \
@@ -169,11 +173,74 @@ release-prepare-all:
 	  fi; \
 	  test -z "$$(git -C "$$site" status --porcelain)" || { \
 	    echo "== $(HTTK_DOCS_REPOSITORY): release preparation left uncommitted changes"; exit 1; }
-	@version="$$($(READ_PROJECT_VERSION) < pyproject.toml)"; \
-	  echo "== httk2: preparing v$$version"; \
-	  $(MAKE) release-prepare VERSION="v$$version"
+	@echo "== Preparation complete; sign generated commits, run make push, then make release-check-all"
 
-release-check-all: release-prepare-all
+release-check-all:
+	@for spec in $(HTTK_RELEASE_REFS); do \
+	  repo=$${spec%:*}; branch=$${spec#*:}; \
+	  test -d "$$repo/.git" || { echo "== $$repo: not checked out (run 'make pull')"; exit 1; }; \
+	  test "$$(git -C "$$repo" branch --show-current)" = "$$branch" || { \
+	    echo "== $$repo: $$branch is not checked out (run 'make pull')"; exit 1; }; \
+	  test -z "$$(git -C "$$repo" status --porcelain)" || { \
+	    echo "== $$repo: worktree is not clean"; exit 1; }; \
+	  git -C "$$repo" fetch origin "$$branch" --tags || exit 1; \
+	  test "$$(git -C "$$repo" rev-parse "$$branch")" = "$$(git -C "$$repo" rev-parse "origin/$$branch")" || { \
+	    echo "== $$repo: $$branch is not pushed exactly to origin/$$branch (run 'make push')"; exit 1; }; \
+	done
+	@for r in $(HTTK_MODULES); do \
+	  repo="$(MODULES_DIR)/$$r"; \
+	  version="$$($(READ_PROJECT_VERSION) < "$$repo/pyproject.toml")" || exit 1; \
+	  tag="v$$version"; \
+	  if git -C "$$repo" ls-remote --exit-code --tags origin "refs/tags/$$tag" >/dev/null 2>&1; then \
+	    echo "== $$r: reusing existing remote $$tag"; \
+	  else \
+	    echo "== $$r: checking $$tag"; \
+	    $(MAKE) -C "$$repo" release-prepare VERSION="$$tag" || exit 1; \
+	    test -z "$$(git -C "$$repo" status --porcelain)" || { \
+	      echo "== $$r: checks refreshed release inputs; rerun preparation before checking again"; exit 1; }; \
+	  fi; \
+	done
+	@set -eu; \
+	  site="$(MODULES_DIR)/$(HTTK_DOCS_REPOSITORY)"; \
+	  git -C "$$site" submodule update --init; \
+	  temporary_tags=""; \
+	  cleanup_tags() { \
+	    for item in $$temporary_tags; do \
+	      nested=$${item%%:*}; tag=$${item#*:}; \
+	      git -C "$$nested" tag -d "$$tag" >/dev/null 2>&1 || true; \
+	    done; \
+	  }; \
+	  trap cleanup_tags EXIT HUP INT TERM; \
+	  for r in $(HTTK_MODULES); do \
+	    source="$$(cd "$(MODULES_DIR)/$$r" && pwd)"; \
+	    nested="$$site/submodules/$$r"; \
+	    version="$$($(READ_PROJECT_VERSION) < "$$source/pyproject.toml")"; \
+	    tag="v$$version"; \
+	    if git -C "$$source" show-ref --verify --quiet "refs/tags/$$tag"; then \
+	      commit="$$(git -C "$$source" rev-parse "$$tag^{}")"; \
+	    else \
+	      commit="$$(git -C "$$source" rev-parse develop)"; \
+	    fi; \
+	    test "$$(git -C "$$site" rev-parse "HEAD:submodules/$$r")" = "$$commit" || { \
+	      echo "== $(HTTK_DOCS_REPOSITORY): $$r is not pinned to $$tag; rerun preparation"; exit 1; }; \
+	    git -C "$$nested" checkout --detach "$$commit"; \
+	    if git -C "$$nested" show-ref --verify --quiet "refs/tags/$$tag"; then \
+	      test "$$(git -C "$$nested" rev-parse "$$tag^{}")" = "$$commit" || { \
+	        echo "== $$r: $$tag does not identify the pinned commit"; exit 1; }; \
+	    else \
+	      git -C "$$nested" -c tag.gpgSign=false tag "$$tag" "$$commit"; \
+	      temporary_tags="$$temporary_tags $$nested:$$tag"; \
+	    fi; \
+	  done; \
+	  version="$$($(READ_PROJECT_VERSION) < "$$site/pyproject.toml")"; \
+	  echo "== $(HTTK_DOCS_REPOSITORY): checking v$$version"; \
+	  $(MAKE) -C "$$site" release-prepare VERSION="v$$version"; \
+	  test -z "$$(git -C "$$site" status --porcelain)" || { \
+	    echo "== $(HTTK_DOCS_REPOSITORY): checks changed release inputs; rerun preparation"; exit 1; }
+	@version="$$($(READ_PROJECT_VERSION) < pyproject.toml)"; \
+	  echo "== httk2: checking v$$version"; \
+	  $(MAKE) release-prepare VERSION="v$$version" || exit 1; \
+	  test -z "$$(git status --porcelain)" || { echo "== httk2: checks changed files"; exit 1; }
 
 # This operates on refs rather than checking out main. Each repository push is
 # atomic, so its main branch and release tag are published together.

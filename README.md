@@ -57,7 +57,7 @@ on all *httk₂* modules and the aggregate documentation site at once:
 make checkout   # clone missing repositories and check out release branches
 make fetch      # git fetch in every managed repository
 make pull       # check out and fast-forward every release branch
-make push       # git push in every managed repository
+make push       # git push in every repository, including this one
 make install    # editable-install every module (with its default extra)
                 # into the currently activated virtual environment
 ```
