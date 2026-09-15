@@ -43,8 +43,53 @@ reserve the project name before then.
 
 ## Prepare and check a release
 
-Update `project.version` in `pyproject.toml`. From a Python 3.12 environment,
-install the release tools and build the distribution:
+The module repositories can be prepared and published together from this
+repository. The aggregate targets operate on the repositories listed in
+`HTTK_MODULES` under `modules/` by default.
+
+1. Update and commit each module's `pyproject.toml` on its `develop` branch,
+   including the intended `project.version` and released dependency floors.
+2. Check out or update every module's `develop` branch:
+
+   ```console
+   make pull
+   ```
+
+3. Run each module's isolated release preparation with the version read from
+   its own `pyproject.toml`:
+
+   ```console
+   make release-prepare-all
+   ```
+
+   Release preparation may refresh committed documentation inputs. If it does,
+   the aggregate target stops; commit and push those exact changes on
+   `develop`, run `make pull`, and repeat this step.
+
+4. If every preparation succeeds, fast-forward each remote `main` to
+   `develop`, create its signed `v<project.version>` tag, and atomically push
+   that repository's branch and tag:
+
+   ```console
+   make release-merge-tag-and-push-main
+   ```
+
+   This target updates Git refs directly and does not check out `main` or
+   otherwise read or change the module worktrees. It reads each version from
+   the committed `develop` ref and stops before creating any tags if local
+   `develop` differs from `origin/develop`, a main branch cannot be
+   fast-forwarded, or a release tag already exists.
+
+5. In each module's GitHub repository, create and publish a release using the
+   existing version tag. This starts its package publication workflow.
+
+The pushes are atomic within each repository. Git cannot make pushes across
+separate repositories atomic, so if a later remote push fails, retry it after
+checking which earlier repositories were already published.
+
+To prepare the `httk2` metapackage itself after its module releases exist on
+PyPI, update `project.version` in this repository's `pyproject.toml`. From a
+Python 3.12 environment, install the release tools and build the distribution:
 
 ```console
 python -m pip install -e ".[release]"
