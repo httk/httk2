@@ -23,13 +23,32 @@ UNPUBLISHED_REQUIREMENTS = $(PYTHON) tools/unpublished_requirements.py
 
 # Print the untagged modules whose httk-* requirements are unpublished. The
 # httk.github.io snapshot and the httk2 metapackage wait until this is empty.
+# Needs uv and the package index; used by preparation and checking.
 define deferred_modules
 for r in $(HTTK_MODULES); do \
   repo="$(MODULES_DIR)/$$r"; \
   tag="v$$(git -C "$$repo" show develop:pyproject.toml | $(READ_PROJECT_VERSION))" || exit 1; \
   git -C "$$repo" show-ref --verify --quiet "refs/tags/$$tag" && continue; \
-  blocked="$$(git -C "$$repo" show develop:pyproject.toml | $(UNPUBLISHED_REQUIREMENTS) 2>/dev/null)" || exit 1; \
+  blocked="$$(git -C "$$repo" show develop:pyproject.toml | $(UNPUBLISHED_REQUIREMENTS))" || exit 1; \
   test -z "$$blocked" || printf ' %s' "$$r"; \
+done
+endef
+
+# Print the untagged modules whose committed documentation lock on develop is
+# stale for their pyproject: preparation never refreshes a deferred module, so
+# these are the modules it deferred (or that were never prepared). Offline, and
+# needs only Git and Python 3.12 (the docs CLI is stdlib-only); used by the
+# tag-and-push step, which runs where httk and uv are not installed.
+define unprepared_modules
+for r in $(HTTK_MODULES); do \
+  repo="$(MODULES_DIR)/$$r"; \
+  tag="v$$(git -C "$$repo" show develop:pyproject.toml | $(READ_PROJECT_VERSION))" || exit 1; \
+  git -C "$$repo" show-ref --verify --quiet "refs/tags/$$tag" && continue; \
+  work="$$(mktemp -d)"; \
+  git -C "$$repo" archive develop pyproject.toml docs/requirements.lock 2>/dev/null | tar -x -C "$$work"; \
+  PYTHONPATH="$(MODULES_DIR)/httk-core/src" $(PYTHON) -m httk.core.docs lock-check "$$work" >/dev/null 2>&1 \
+    || printf ' %s' "$$r"; \
+  rm -rf "$$work"; \
 done
 endef
 
@@ -144,7 +163,7 @@ release-prepare-all:
 	  if git -C "$$repo" show-ref --verify --quiet "refs/tags/$$tag"; then \
 	    echo "== $$r: reusing existing $$tag"; \
 	  else \
-	    blocked="$$($(UNPUBLISHED_REQUIREMENTS) < "$$repo/pyproject.toml")" || exit 1; \
+	    blocked="$$($(UNPUBLISHED_REQUIREMENTS) --explain < "$$repo/pyproject.toml")" || exit 1; \
 	    if test -n "$$blocked"; then \
 	      echo "== $$r: deferring $$tag; unpublished requirements: $$blocked"; \
 	    else \
@@ -226,7 +245,7 @@ release-check-all:
 	  if git -C "$$repo" show-ref --verify --quiet "refs/tags/$$tag"; then \
 	    echo "== $$r: reusing existing $$tag"; \
 	  else \
-	    blocked="$$($(UNPUBLISHED_REQUIREMENTS) < "$$repo/pyproject.toml")" || exit 1; \
+	    blocked="$$($(UNPUBLISHED_REQUIREMENTS) --explain < "$$repo/pyproject.toml")" || exit 1; \
 	    if test -n "$$blocked"; then \
 	      echo "== $$r: deferring $$tag; unpublished requirements: $$blocked"; \
 	    else \
@@ -289,8 +308,8 @@ release-check-all:
 # atomic, so its main branch and release tag are published together.
 release-merge-tag-and-push-main:
 	@set -eu; \
-	deferred="$$($(deferred_modules))" || exit 1; \
-	test -z "$$deferred" || echo "== deferring$$deferred, $(HTTK_DOCS_REPOSITORY), and httk2 until their unpublished requirements are released"; \
+	deferred="$$($(unprepared_modules))" || exit 1; \
+	test -z "$$deferred" || echo "== deferring$$deferred, $(HTTK_DOCS_REPOSITORY), and httk2: release inputs not prepared (unpublished requirements, or preparation not run)"; \
 	skip_deferred() { \
 	  case " $$deferred " in *" $$1 "*) return 0;; esac; \
 	  case " $(HTTK_MODULES) " in *" $$1 "*) return 1;; esac; \

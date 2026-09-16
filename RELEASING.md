@@ -127,8 +127,13 @@ cycle. This requires `uv` on `PATH`, as do the module release gates.
    ```
 
    Runtime modules are pushed first, followed by `httk.github.io` and `httk2`.
-   The target updates Git refs directly and does not change branches or read
-   the worktrees. Runtime versions and tags come from `develop`, which is also
+   This step runs where Git can authenticate; it needs only Git and Python
+   3.12, not an httk installation, `uv`, or network access beyond Git. It
+   identifies deferred modules offline: an untagged module whose committed
+   documentation lock on `develop` is stale for its `pyproject.toml` was not
+   prepared, either because preparation deferred it or because preparation
+   was never run, and is not tagged. The target updates Git refs directly and
+   does not change branches or read the worktrees. Runtime versions and tags come from `develop`, which is also
    pushed to `main`; documentation and metapackage versions and tags come from
    `main`. It stops before creating any tags if a local release branch is not
    based on its remote, a runtime `main` cannot be fast-forwarded, or a release

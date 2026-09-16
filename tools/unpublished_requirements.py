@@ -4,7 +4,8 @@ Each requirement is resolved on its own with ``uv pip compile --no-deps``, so
 the output names exactly the internal releases that must be published before
 the project can be locked, checked, and tagged. Empty output means every
 internal requirement is already published. Only the standard library and ``uv``
-are needed.
+are needed. With ``--explain``, the resolver's reason for each unsatisfiable
+requirement is printed to stderr.
 """
 
 import re
@@ -15,6 +16,7 @@ import tomllib
 
 def main() -> int:
     """Resolve each internal requirement and print the unsatisfiable ones."""
+    explain = "--explain" in sys.argv[1:]
     project = tomllib.load(sys.stdin.buffer)["project"]
     requirements = set(project.get("dependencies", ()))
     for extra in project.get("optional-dependencies", {}).values():
@@ -32,8 +34,9 @@ def main() -> int:
         if result.returncode != 0:
             # Any resolver failure (unpublished, or index unreachable) defers the
             # release; deferring is the safe direction, so the reason is only logged.
-            reason = " ".join(result.stderr.split()).split("Because", 1)[-1].strip()
-            print(f"{requirement}: because {reason}", file=sys.stderr)
+            if explain:
+                reason = " ".join(result.stderr.split()).split("Because", 1)[-1].strip()
+                print(f"{requirement}: because {reason}", file=sys.stderr)
             unpublished.append(requirement)
     print(" ".join(unpublished))
     return 0
