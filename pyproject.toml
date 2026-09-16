@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "httk2"
-version = "2.1.1"
+version = "2.1.2"
 description = "The high-throughput toolkit (httk₂) is a modular Python toolkit for materials science. The httk2 metapackage installs the standard components of httk₂."
 readme = "README.md"
 license = "AGPL-3.0-or-later"
@@ -14,8 +14,8 @@ authors = [{ name = "Rickard Armiento", email = "rickard-gpg@armiento.net" }]
 dependencies = [
   "httk-core[default]>=2.1.0,<3",
   "httk-atomistic[default]>=2.1.0,<3",
-  "httk-store[default]>=2.1.0,<3",
-  "httk-serve[default]>=2.1.0,<3",
+  "httk-store[default]>=2.1.2,<3",
+  "httk-serve[default]>=2.1.1,<3",
   "httk-analyse[default]>=2.1.0,<3",
   "httk-workflow[default]>=2.1.0,<3",
 ]
