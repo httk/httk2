@@ -5,19 +5,28 @@ the set of *httk₂* modules to install. Releases are built and published by
 GitHub Actions. PyPI authentication uses Trusted Publishing, so the repository
 does not need a stored PyPI API token.
 
-## Release ordering
+## Release ordering and cycles
 
-The metapackage must be released **after** the modules it depends on already
-exist on PyPI at compatible versions. An `httk2` release resolves only if its
-`Requires-Dist` entries can be satisfied from the index:
+Every release gate resolves `httk-*` requirements from PyPI and reads the
+dependencies' release documentation from `docs.httk.org`: the documentation
+lock, the committed intersphinx inventories, the isolated wheel and test
+environments, and the GitHub Actions release workflows. Nothing is verified
+against local checkouts, because that is not what users install. So a module
+whose new version raises its floor on a sibling (for example `httk-serve`
+requiring `httk-store>=2.1.2`) cannot be locked, checked, or tagged until that
+sibling version is published on PyPI. The same applies to the `httk2`
+metapackage, whose `Requires-Dist` entries must all be installable from the
+index.
 
-- `httk-core`, `httk-atomistic`, `httk-store`, `httk-serve`,
-  `httk-analyse`, and `httk-workflow` must all be published (at versions
-  matching the ranges in `pyproject.toml`) before the `httk2` release is
-  installable.
-
-Release the individual module distributions first, confirm they install from
-PyPI, then release the matching `httk2` version.
+The coordinated targets below handle this by **deferring** rather than
+failing: an untagged module whose `httk-*` requirements do not resolve from
+PyPI is skipped with a `deferring` message, and the `httk.github.io`
+snapshot and the `httk2` metapackage are deferred while any module is. Tags
+are never recreated, so releasing a set of modules that evolve together is a
+loop of release cycles: each cycle tags what is publishable, those tags are
+published through GitHub, and the next cycle picks up the modules that were
+waiting for them. The loop ends when the final step reports that nothing new
+was tagged.
 
 ## One-time setup
 
@@ -47,6 +56,11 @@ The module repositories, aggregate documentation, and `httk2` metapackage can
 be prepared and published together from this repository. The managed
 repositories are checked out under `modules/` by default.
 
+Step 1 is done once. Steps 2 to 7 form one release cycle; repeat the cycle
+until step 6 reports `Nothing new was tagged; the release cycle is complete`.
+A release where no module depends on an unpublished sibling completes in one
+cycle. This requires `uv` on `PATH`, as do the module release gates.
+
 1. Update and commit each repository's `pyproject.toml`, including the intended
    `project.version` and released dependency floors. Use `develop` for the six
    runtime modules and `main` for `httk.github.io` and `httk2`.
@@ -69,11 +83,15 @@ repositories are checked out under `modules/` by default.
    For each new runtime version, this refreshes its documentation lock and
    inventories without running the expensive release gates. These refreshes
    use package indexes and published documentation but do not contact remote
-   Git repositories. If the inputs change, the target stops: review, commit,
-   and sign them on `develop`, then repeat this step. Once the runtime
-   repositories are clean, it pins the
-   `httk.github.io` submodules to the selected release commits, regenerates its
-   ecosystem manifest and documentation lock, and commits that snapshot.
+   Git repositories. A new version whose `httk-*` requirements are not yet on
+   PyPI is reported as `deferring` together with the blocking requirements
+   and left untouched for a later cycle. If the inputs change, the target
+   stops: review, commit, and sign them on `develop`, then repeat this step.
+   Once the runtime repositories are clean, it pins the `httk.github.io`
+   submodules to the selected release commits, regenerates its ecosystem
+   manifest and documentation lock, and commits that snapshot. While any
+   module is deferred, `httk.github.io` and `httk2` are deferred instead and
+   this step ends after the runtime modules.
 
 4. Sign any generated commits, then push all candidate branches:
 
@@ -95,8 +113,10 @@ repositories are checked out under `modules/` by default.
    and 3.14, along with its CI, documentation, distribution, dependency, and
    isolated-wheel checks. It then checks the pinned aggregate documentation
    snapshot and the `httk2` distribution. Already released versions are reused
-   without retesting unreleased commits beyond their tags. The final release
-   target refreshes and validates remote refs immediately before publishing.
+   without retesting unreleased commits beyond their tags, and deferred
+   modules are skipped in the same way as during preparation. The final
+   release target refreshes and validates remote refs immediately before
+   publishing.
 
 6. If every check succeeds, fast-forward each runtime module's remote
    `main` to `develop`, create each signed `v<project.version>` tag, and push
@@ -116,11 +136,21 @@ repositories are checked out under `modules/` by default.
 
    Repositories whose `v<project.version>` tags already exist remotely are
    left unchanged. This permits one block release to combine unchanged 2.1.0
-   modules with new 2.1.1 modules.
+   modules with new 2.1.1 modules. Deferred modules, and with them
+   `httk.github.io` and `httk2`, are not tagged. The target ends with either
+   `Tagged: ...`, listing the new tags, or `Nothing new was tagged; the
+   release cycle is complete`, which ends the loop.
 
-7. In GitHub, create and publish releases using the existing tags. Publish the
-   six runtime module releases in dependency order and wait for their PyPI
-   uploads before publishing the `httk2` release. The `httk.github.io` tag push
+7. In GitHub, create and publish releases using the tags listed in step 6.
+   Publish the runtime module releases in dependency order and wait for their
+   PyPI uploads. Each runtime tag push also starts that module's release
+   documentation deployment, which deferred dependents need for their
+   inventories. If step 6 reported deferred modules, wait until the new
+   versions are visible on PyPI and at `https://docs.httk.org/<module>/v<version>/`,
+   then start the next cycle at step 2: the published modules are reused by
+   their tags, and the previously deferred modules are prepared, checked, and
+   tagged. The `httk2` release is created in the cycle that tags it, after
+   every module it requires has been published. The `httk.github.io` tag push
    starts the versioned aggregate documentation deployment directly.
 
 The pushes are atomic within each repository. Git cannot make pushes across
@@ -166,7 +196,7 @@ Replace `2.0.0` with the version being tested.
 ## PyPI
 
 1. Confirm that the module dependencies are already published on PyPI at
-   compatible versions (see **Release ordering**).
+   compatible versions (see **Release ordering and cycles**).
 2. Confirm that `make release-check` succeeds on the exact commit to release.
 3. Push the commit and create a GitHub release whose tag is `v` followed by the
    package version, for example `v2.0.0`.

@@ -16,6 +16,22 @@ GIT_USER_NAME ?= Rickard Armiento
 GIT_USER_EMAIL ?= rickard-gpg@armiento.net
 READ_PROJECT_VERSION = $(PYTHON) -c 'import sys, tomllib; print(tomllib.load(sys.stdin.buffer)["project"]["version"])'
 READ_PROJECT_EXTRAS = $(PYTHON) -c 'import sys, tomllib; print(",".join(tomllib.load(sys.stdin.buffer)["project"].get("optional-dependencies", ())))'
+# Print the httk-* requirements of the pyproject on stdin that are not yet
+# published. A module with unpublished requirements is deferred to a later
+# release cycle instead of failing the coordinated targets (see RELEASING.md).
+UNPUBLISHED_REQUIREMENTS = $(PYTHON) tools/unpublished_requirements.py
+
+# Print the untagged modules whose httk-* requirements are unpublished. The
+# httk.github.io snapshot and the httk2 metapackage wait until this is empty.
+define deferred_modules
+for r in $(HTTK_MODULES); do \
+  repo="$(MODULES_DIR)/$$r"; \
+  tag="v$$(git -C "$$repo" show develop:pyproject.toml | $(READ_PROJECT_VERSION))" || exit 1; \
+  git -C "$$repo" show-ref --verify --quiet "refs/tags/$$tag" && continue; \
+  blocked="$$(git -C "$$repo" show develop:pyproject.toml | $(UNPUBLISHED_REQUIREMENTS) 2>/dev/null)" || exit 1; \
+  test -z "$$blocked" || printf ' %s' "$$r"; \
+done
+endef
 
 # Run "git $(1)" in every checked-out repository; report missing checkouts and
 # fail at the end if anything failed.
@@ -128,10 +144,15 @@ release-prepare-all:
 	  if git -C "$$repo" show-ref --verify --quiet "refs/tags/$$tag"; then \
 	    echo "== $$r: reusing existing $$tag"; \
 	  else \
-	    echo "== $$r: refreshing release inputs for $$tag"; \
-	    $(MAKE) -C "$$repo" docs-lock docs-inventories || exit 1; \
-	    if test -n "$$(git -C "$$repo" status --porcelain)"; then \
-	      echo "== $$r: release inputs updated"; changed=1; \
+	    blocked="$$($(UNPUBLISHED_REQUIREMENTS) < "$$repo/pyproject.toml")" || exit 1; \
+	    if test -n "$$blocked"; then \
+	      echo "== $$r: deferring $$tag; unpublished requirements: $$blocked"; \
+	    else \
+	      echo "== $$r: refreshing release inputs for $$tag"; \
+	      $(MAKE) -C "$$repo" docs-lock docs-inventories || exit 1; \
+	      if test -n "$$(git -C "$$repo" status --porcelain)"; then \
+	        echo "== $$r: release inputs updated"; changed=1; \
+	      fi; \
 	    fi; \
 	  fi; \
 	done; \
@@ -139,6 +160,10 @@ release-prepare-all:
 	  echo "== Commit and sign the updated release inputs, then rerun make release-prepare-all"; exit 1; }
 	@set -eu; \
 	  site="$(MODULES_DIR)/$(HTTK_DOCS_REPOSITORY)"; \
+	  deferred="$$($(deferred_modules))" || exit 1; \
+	  if test -n "$$deferred"; then \
+	    echo "== $(HTTK_DOCS_REPOSITORY), httk2: deferred until the deferred modules are released:$$deferred"; exit 0; \
+	  fi; \
 	  temporary_tags=""; \
 	  cleanup_tags() { \
 	    for item in $$temporary_tags; do \
@@ -179,7 +204,7 @@ release-prepare-all:
 	  fi; \
 	  test -z "$$(git -C "$$site" status --porcelain)" || { \
 	    echo "== $(HTTK_DOCS_REPOSITORY): release preparation left uncommitted changes"; exit 1; }
-	@echo "== Preparation complete; sign generated commits, run make push, then make release-check-all"
+	@echo "== Preparation complete for this cycle; sign generated commits, run make push, then make release-check-all"
 
 release-check-all:
 	@for spec in $(HTTK_RELEASE_REFS); do \
@@ -201,14 +226,23 @@ release-check-all:
 	  if git -C "$$repo" show-ref --verify --quiet "refs/tags/$$tag"; then \
 	    echo "== $$r: reusing existing $$tag"; \
 	  else \
-	    echo "== $$r: checking $$tag"; \
-	    $(MAKE) -C "$$repo" release-prepare VERSION="$$tag" || exit 1; \
-	    test -z "$$(git -C "$$repo" status --porcelain)" || { \
-	      echo "== $$r: checks refreshed release inputs; rerun preparation before checking again"; exit 1; }; \
+	    blocked="$$($(UNPUBLISHED_REQUIREMENTS) < "$$repo/pyproject.toml")" || exit 1; \
+	    if test -n "$$blocked"; then \
+	      echo "== $$r: deferring $$tag; unpublished requirements: $$blocked"; \
+	    else \
+	      echo "== $$r: checking $$tag"; \
+	      $(MAKE) -C "$$repo" release-prepare VERSION="$$tag" || exit 1; \
+	      test -z "$$(git -C "$$repo" status --porcelain)" || { \
+	        echo "== $$r: checks refreshed release inputs; rerun preparation before checking again"; exit 1; }; \
+	    fi; \
 	  fi; \
 	done
 	@set -eu; \
 	  site="$(MODULES_DIR)/$(HTTK_DOCS_REPOSITORY)"; \
+	  deferred="$$($(deferred_modules))" || exit 1; \
+	  if test -n "$$deferred"; then \
+	    echo "== $(HTTK_DOCS_REPOSITORY), httk2: deferred until the deferred modules are released:$$deferred"; exit 0; \
+	  fi; \
 	  temporary_tags=""; \
 	  cleanup_tags() { \
 	    for item in $$temporary_tags; do \
@@ -245,18 +279,27 @@ release-check-all:
 	  echo "== $(HTTK_DOCS_REPOSITORY): checking v$$version"; \
 	  $(MAKE) -C "$$site" release-prepare VERSION="v$$version"; \
 	  test -z "$$(git -C "$$site" status --porcelain)" || { \
-	    echo "== $(HTTK_DOCS_REPOSITORY): checks changed release inputs; rerun preparation"; exit 1; }
-	@version="$$($(READ_PROJECT_VERSION) < pyproject.toml)"; \
+	    echo "== $(HTTK_DOCS_REPOSITORY): checks changed release inputs; rerun preparation"; exit 1; }; \
+	  version="$$($(READ_PROJECT_VERSION) < pyproject.toml)"; \
 	  echo "== httk2: checking v$$version"; \
-	  $(MAKE) release-prepare VERSION="v$$version" || exit 1; \
+	  $(MAKE) release-prepare VERSION="v$$version"; \
 	  test -z "$$(git status --porcelain)" || { echo "== httk2: checks changed files"; exit 1; }
 
 # This operates on refs rather than checking out main. Each repository push is
 # atomic, so its main branch and release tag are published together.
 release-merge-tag-and-push-main:
-	@set -eu; for spec in $(HTTK_RELEASE_REFS); do \
+	@set -eu; \
+	deferred="$$($(deferred_modules))" || exit 1; \
+	test -z "$$deferred" || echo "== deferring$$deferred, $(HTTK_DOCS_REPOSITORY), and httk2 until their unpublished requirements are released"; \
+	skip_deferred() { \
+	  case " $$deferred " in *" $$1 "*) return 0;; esac; \
+	  case " $(HTTK_MODULES) " in *" $$1 "*) return 1;; esac; \
+	  test -n "$$deferred"; \
+	}; \
+	for spec in $(HTTK_RELEASE_REFS); do \
 	  repo=$${spec%:*}; branch=$${spec#*:}; \
 	  name="$$(basename "$$(cd "$$repo" && pwd)")"; \
+	  skip_deferred "$$name" && continue; \
 	  test -d "$$repo/.git" || { echo "== $$name: not checked out (run 'make pull')"; exit 1; }; \
 	  echo "== $$name: fetching release refs"; \
 	  refs=main; test "$$branch" = main || refs="$$refs $$branch"; \
@@ -272,10 +315,11 @@ release-merge-tag-and-push-main:
 	    echo "== $$name: $$branch cannot be fast-forwarded onto main"; exit 1; }; \
 	  ! git -C "$$repo" show-ref --verify --quiet "refs/tags/$$tag" || { \
 	    echo "== $$name: tag $$tag already exists"; exit 1; }; \
-	done
-	@set -eu; for spec in $(HTTK_RELEASE_REFS); do \
+	done; \
+	tagged=""; for spec in $(HTTK_RELEASE_REFS); do \
 	  repo=$${spec%:*}; branch=$${spec#*:}; \
 	  name="$$(basename "$$(cd "$$repo" && pwd)")"; \
+	  skip_deferred "$$name" && continue; \
 	  version="$$(git -C "$$repo" show "$$branch:pyproject.toml" | $(READ_PROJECT_VERSION))"; \
 	  tag="v$$version"; \
 	  if git -C "$$repo" ls-remote --exit-code --tags origin "refs/tags/$$tag" >/dev/null 2>&1; then \
@@ -287,4 +331,11 @@ release-merge-tag-and-push-main:
 	  if test "$$branch" = develop; then refs="develop:develop develop:main"; else refs="main:main"; fi; \
 	  git -C "$$repo" push --atomic origin $$refs "refs/tags/$$tag" || { \
 	    git -C "$$repo" tag -d "$$tag"; exit 1; }; \
-	done
+	  tagged="$$tagged $$name:$$tag"; \
+	done; \
+	if test -n "$$tagged"; then \
+	  echo "== Tagged:$$tagged"; \
+	  echo "== Create the GitHub releases for these tags; once they are on PyPI, start the next release cycle with make pull"; \
+	else \
+	  echo "== Nothing new was tagged; the release cycle is complete"; \
+	fi
