@@ -2,9 +2,8 @@ PYTHON ?= python3
 DIST_DIR ?= dist
 
 # Module-workspace helpers: check out and operate on all httk₂ module
-# repositories under $(MODULES_DIR). The list is in dependency order, which
-# `install` relies on so each editable install finds its httk dependencies
-# already present in the venv.
+# repositories under $(MODULES_DIR). The module list is in dependency order for
+# coordinated release operations.
 MODULES_DIR ?= modules
 HTTK_GIT_BASE ?= git@github.com:httk
 HTTK_MODULES ?= httk-core httk-store httk-atomistic httk-analyse httk-serve httk-workflow
@@ -16,6 +15,7 @@ HTTK_RELEASE_REFS = $(HTTK_MANAGED_REFS) .:main
 GIT_USER_NAME ?= Rickard Armiento
 GIT_USER_EMAIL ?= rickard-gpg@armiento.net
 READ_PROJECT_VERSION = $(PYTHON) -c 'import sys, tomllib; print(tomllib.load(sys.stdin.buffer)["project"]["version"])'
+READ_PROJECT_EXTRAS = $(PYTHON) -c 'import sys, tomllib; print(",".join(tomllib.load(sys.stdin.buffer)["project"].get("optional-dependencies", ())))'
 
 # Run "git $(1)" in every checked-out repository; report missing checkouts and
 # fail at the end if anything failed.
@@ -76,14 +76,17 @@ push:
 install:
 	@test -n "$$VIRTUAL_ENV" || { \
 	  echo "error: no activated virtual environment (VIRTUAL_ENV is unset)"; exit 1; }
-	@for r in $(HTTK_MODULES); do \
-	  test -d "$(MODULES_DIR)/$$r/.git" || { \
-	    echo "== $$r: not checked out (run 'make checkout')"; exit 1; }; \
-	done
-	@for r in $(HTTK_MODULES); do \
-	  echo "== installing $$r (editable, with its default extra)"; \
-	  $(PYTHON) -m pip install --editable "$(MODULES_DIR)/$$r[default]" || exit 1; \
-	done
+	@set -eu; set --; \
+	for repo in $(foreach r,$(HTTK_REPOSITORIES),$(MODULES_DIR)/$(r)) .; do \
+	  test -f "$$repo/pyproject.toml" || { \
+	    echo "== $$repo: not checked out (run 'make checkout')"; exit 1; }; \
+	  extras="$$($(READ_PROJECT_EXTRAS) < "$$repo/pyproject.toml")"; \
+	  requirement="$$repo"; \
+	  test -z "$$extras" || requirement="$$repo[$$extras]"; \
+	  echo "== installing $$repo (editable, extras: $${extras:-none})"; \
+	  set -- "$$@" --editable "$$requirement"; \
+	done; \
+	$(PYTHON) -m pip install "$$@"
 
 dist-clean:
 	rm -rf build $(DIST_DIR) *.egg-info

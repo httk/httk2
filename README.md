@@ -58,8 +58,8 @@ make checkout   # clone missing repositories and check out release branches
 make fetch      # git fetch in every managed repository
 make pull       # check out and fast-forward every release branch
 make push       # git push in every repository, including this one
-make install    # editable-install every module (with its default extra)
-                # into the currently activated virtual environment
+make install    # editable-install the workspace, including development,
+                # documentation, release, and optional integration extras
 ```
 
 `checkout` clones over SSH from `git@github.com:httk/...`. It uses `develop`
@@ -67,6 +67,9 @@ for the six module repositories and `main` for `httk.github.io`; `pull` also
 keeps this metapackage checkout on `main`.
 `fetch` and `push` continue past individual failures and exit non-zero if any
 repository failed.
-`install` refuses to run without an activated virtual environment, and installs
-the modules in dependency order so each editable install finds its httk
-dependencies already in place.
+`install` refuses to run without an activated virtual environment. It installs
+every declared extra from the six module checkouts, the aggregate documentation
+checkout, and this metapackage in one resolution. This supplies the Python
+dependencies used by release preparation and the broadest local test coverage.
+Tests that exercise external database servers or browser runtimes still require
+those services or tools to be started separately.
