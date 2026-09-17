@@ -68,8 +68,10 @@ A release where no module depends on an unpublished sibling completes in one
 cycle. This requires `uv` on `PATH`, as do the module release gates.
 
 1. Update and commit each repository's `pyproject.toml`, including the intended
-   `project.version` and released dependency floors. Use `develop` for the six
-   runtime modules and `main` for `httk.github.io` and `httk2`.
+   `project.version` and released dependency floors. Use `develop` for the
+   runtime modules and `main` for `httk2`. The `httk.github.io` version is not
+   set by hand: the aggregate documentation snapshot is versioned as the
+   `httk2` release it documents, and preparation sets it.
 2. Check out or update those branches:
 
    ```console
@@ -94,8 +96,11 @@ cycle. This requires `uv` on `PATH`, as do the module release gates.
    and left untouched for a later cycle. If the inputs change, the target
    stops: review, commit, and sign them on `develop`, then repeat this step.
    Once the runtime repositories are clean, it pins the `httk.github.io`
-   submodules to the selected release commits, regenerates its ecosystem
-   manifest and documentation lock, and commits that snapshot. While any
+   submodules to the selected release commits, sets its `project.version` to
+   the `httk2` version, regenerates its ecosystem manifest and documentation
+   lock, and commits that snapshot. If that version is already tagged for
+   `httk.github.io` and the snapshot still changed, preparation stops: bump
+   the `httk2` version, or repair the published documentation instead. While any
    module is deferred, `httk.github.io` and `httk2` are deferred instead and
    this step ends after the runtime modules.
 

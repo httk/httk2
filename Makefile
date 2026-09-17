@@ -232,10 +232,21 @@ release-prepare-all:
 	    fi; \
 	    git -C "$$site" add "submodules/$$r"; \
 	  done; \
-	  version="$$($(READ_PROJECT_VERSION) < "$$site/pyproject.toml")"; \
+	  version="$$($(READ_PROJECT_VERSION) < pyproject.toml)"; \
+	  if test "$$($(READ_PROJECT_VERSION) < "$$site/pyproject.toml")" != "$$version"; then \
+	    echo "== $(HTTK_DOCS_REPOSITORY): setting version to $$version (follows httk2)"; \
+	    sed -i "s/^version = \".*\"/version = \"$$version\"/" "$$site/pyproject.toml"; \
+	    test "$$($(READ_PROJECT_VERSION) < "$$site/pyproject.toml")" = "$$version" || { \
+	      echo "== $(HTTK_DOCS_REPOSITORY): could not set project.version"; exit 1; }; \
+	    git -C "$$site" add pyproject.toml; \
+	  fi; \
 	  $(MAKE) -C "$$site" ecosystem-manifest-release docs-lock; \
 	  git -C "$$site" add docs/ecosystem.json docs/requirements.lock; \
 	  if ! git -C "$$site" diff --cached --quiet; then \
+	    ! git -C "$$site" show-ref --verify --quiet "refs/tags/v$$version" || { \
+	      echo "== $(HTTK_DOCS_REPOSITORY): v$$version is already tagged but the documentation snapshot changed;"; \
+	      echo "   bump the httk2 version, or repair the published v$$version documentation instead"; \
+	      git -C "$$site" reset -q; exit 1; }; \
 	    git -C "$$site" -c user.name="$(GIT_USER_NAME)" -c user.email="$(GIT_USER_EMAIL)" \
 	      commit -m "Prepare v$$version documentation snapshot"; \
 	  fi; \
