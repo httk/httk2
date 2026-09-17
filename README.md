@@ -62,14 +62,20 @@ make install    # editable-install the workspace, including development,
                 # documentation, release, and optional integration extras
 ```
 
-`checkout` clones over SSH from `git@github.com:httk/...`. It uses `develop`
-for the six module repositories and `main` for `httk.github.io`; `pull` also
-keeps this metapackage checkout on `main`.
+`checkout` clones the six default modules over SSH from
+`git@github.com:httk/...` when they are missing. Every repository found under
+`modules/` is managed: one that carries the httk-module-template release
+infrastructure (`tools/check_release.py`) is a release module and is kept on
+`develop`, `httk.github.io` is kept on `main`, and any other repository is a
+development repository that `fetch`, `pull`, and `push` handle on whatever
+branch it has checked out. Moving a repository into `modules/` is all it takes
+to include it; adopting the module template later promotes it to a release
+module. `pull` also keeps this metapackage checkout on `main`.
 `fetch` and `push` continue past individual failures and exit non-zero if any
 repository failed.
 `install` refuses to run without an activated virtual environment. It installs
-every declared extra from the six module checkouts, the aggregate documentation
-checkout, and this metapackage in one resolution. This supplies the Python
+every declared extra from every checkout with a `pyproject.toml`, the aggregate
+documentation checkout, and this metapackage in one resolution. This supplies the Python
 dependencies used by release preparation and the broadest local test coverage.
 Tests that exercise external database servers or browser runtimes still require
 those services or tools to be started separately.

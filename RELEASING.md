@@ -54,7 +54,13 @@ reserve the project name before then.
 
 The module repositories, aggregate documentation, and `httk2` metapackage can
 be prepared and published together from this repository. The managed
-repositories are checked out under `modules/` by default.
+repositories are checked out under `modules/` by default. The release targets
+act on every repository there that carries the httk-module-template release
+infrastructure (`tools/check_release.py`), whether or not it is one of the six
+default modules; repositories without it are development checkouts that only
+`make pull` and `make push` touch. A release module that is not a submodule of
+`httk.github.io` is released on its own and skipped when the aggregate
+documentation snapshot is pinned.
 
 Step 1 is done once. Steps 2 to 7 form one release cycle; repeat the cycle
 until step 6 reports `Nothing new was tagged; the release cycle is complete`.

@@ -1,14 +1,23 @@
 PYTHON ?= python3
 DIST_DIR ?= dist
 
-# Module-workspace helpers: check out and operate on all httk₂ module
-# repositories under $(MODULES_DIR). The module list is in dependency order for
-# coordinated release operations.
+# Module-workspace helpers: check out and operate on the repositories under
+# $(MODULES_DIR). The default modules are cloned by "make checkout" when absent
+# and are listed in dependency order. Any other repository found there is
+# picked up automatically: one carrying the httk-module-template release
+# infrastructure (tools/check_release.py) is a release module, released from
+# develop by the coordinated targets; anything else is a development repository
+# that only pull, fetch, and push touch, on its current branch.
 MODULES_DIR ?= modules
 HTTK_GIT_BASE ?= git@github.com:httk
-HTTK_MODULES ?= httk-core httk-store httk-atomistic httk-analyse httk-serve httk-workflow
+HTTK_DEFAULT_MODULES ?= httk-core httk-store httk-atomistic httk-analyse httk-serve httk-workflow
 HTTK_DOCS_REPOSITORY ?= httk.github.io
-HTTK_REPOSITORIES ?= $(HTTK_MODULES) $(HTTK_DOCS_REPOSITORY)
+HTTK_CHECKED_OUT := $(notdir $(patsubst %/.git,%,$(wildcard $(MODULES_DIR)/*/.git)))
+HTTK_MODULES ?= $(HTTK_DEFAULT_MODULES) $(sort $(foreach r,\
+	$(filter-out $(HTTK_DEFAULT_MODULES) $(HTTK_DOCS_REPOSITORY),$(HTTK_CHECKED_OUT)),\
+	$(if $(wildcard $(MODULES_DIR)/$(r)/tools/check_release.py),$(r))))
+HTTK_DEV_REPOSITORIES ?= $(filter-out $(HTTK_MODULES) $(HTTK_DOCS_REPOSITORY),$(HTTK_CHECKED_OUT))
+HTTK_REPOSITORIES ?= $(HTTK_MODULES) $(HTTK_DOCS_REPOSITORY) $(HTTK_DEV_REPOSITORIES)
 HTTK_MANAGED_REFS = $(foreach r,$(HTTK_MODULES),$(MODULES_DIR)/$(r):develop) \
 	$(MODULES_DIR)/$(HTTK_DOCS_REPOSITORY):main
 HTTK_RELEASE_REFS = $(HTTK_MANAGED_REFS) .:main
@@ -85,6 +94,9 @@ checkout:
 	    git clone --branch "$$branch" "$(HTTK_GIT_BASE)/$$name.git" "$$repo" || exit 1; \
 	  fi; \
 	done
+	@for r in $(HTTK_DEV_REPOSITORIES); do \
+	  echo "== $$r: development repository on $$(git -C "$(MODULES_DIR)/$$r" branch --show-current) (no release infrastructure)"; \
+	done
 
 fetch:
 	$(call git_foreach,fetch)
@@ -101,6 +113,9 @@ pull: checkout
 	  repo=$${spec%:*}; branch=$${spec#*:}; \
 	  git -C "$$repo" pull --ff-only origin "$$branch" || exit 1; \
 	done
+	@for r in $(HTTK_DEV_REPOSITORIES); do \
+	  git -C "$(MODULES_DIR)/$$r" pull --ff-only || exit 1; \
+	done
 	@git -C "$(MODULES_DIR)/$(HTTK_DOCS_REPOSITORY)" submodule sync --recursive
 	@git -C "$(MODULES_DIR)/$(HTTK_DOCS_REPOSITORY)" submodule update --init --recursive
 
@@ -113,8 +128,9 @@ install:
 	  echo "error: no activated virtual environment (VIRTUAL_ENV is unset)"; exit 1; }
 	@set -eu; set --; \
 	for repo in $(foreach r,$(HTTK_REPOSITORIES),$(MODULES_DIR)/$(r)) .; do \
-	  test -f "$$repo/pyproject.toml" || { \
+	  test -e "$$repo/.git" || { \
 	    echo "== $$repo: not checked out (run 'make checkout')"; exit 1; }; \
+	  test -f "$$repo/pyproject.toml" || { echo "== $$repo: no pyproject.toml; skipped"; continue; }; \
 	  extras="$$($(READ_PROJECT_EXTRAS) < "$$repo/pyproject.toml")"; \
 	  requirement="$$repo"; \
 	  test -z "$$extras" || requirement="$$repo[$$extras]"; \
@@ -194,6 +210,8 @@ release-prepare-all:
 	  for r in $(HTTK_MODULES); do \
 	    source="$$(cd "$(MODULES_DIR)/$$r" && pwd)"; \
 	    nested="$$site/submodules/$$r"; \
+	    git -C "$$site" ls-files --error-unmatch "submodules/$$r" >/dev/null 2>&1 || { \
+	      echo "== $(HTTK_DOCS_REPOSITORY): $$r is not an aggregate documentation submodule; skipped"; continue; }; \
 	    test -e "$$nested/.git" || { \
 	      echo "== $(HTTK_DOCS_REPOSITORY): $$r is not initialized (run 'make pull')"; exit 1; }; \
 	    version="$$($(READ_PROJECT_VERSION) < "$$source/pyproject.toml")"; \
@@ -273,6 +291,7 @@ release-check-all:
 	  for r in $(HTTK_MODULES); do \
 	    source="$$(cd "$(MODULES_DIR)/$$r" && pwd)"; \
 	    nested="$$site/submodules/$$r"; \
+	    git -C "$$site" ls-files --error-unmatch "submodules/$$r" >/dev/null 2>&1 || continue; \
 	    test -e "$$nested/.git" || { \
 	      echo "== $(HTTK_DOCS_REPOSITORY): $$r is not initialized; rerun preparation"; exit 1; }; \
 	    version="$$($(READ_PROJECT_VERSION) < "$$source/pyproject.toml")"; \
