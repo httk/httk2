@@ -146,6 +146,14 @@ cycle. This requires `uv` on `PATH`, as do the module release gates.
    `Tagged: ...`, listing the new tags, or `Nothing new was tagged; the
    release cycle is complete`, which ends the loop.
 
+   A tag is not yet a release. If a check fails after tagging but before the
+   GitHub release is published, fix the branch, delete the tag locally and on
+   `origin`, and repeat the cycle from step 2; the tag is recreated on the new
+   commit. Each runtime tag push deploys that version's release documentation,
+   and the deploy job replaces earlier documentation for a version that is
+   not on PyPI yet. Once the version is on PyPI, its documentation is
+   immutable and changes go through the manual repair workflow.
+
 7. In GitHub, create and publish releases using the tags listed in step 6.
    Publish the runtime module releases in dependency order and wait for their
    PyPI uploads. Each runtime tag push also starts that module's release
