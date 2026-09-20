@@ -24,7 +24,8 @@ def main() -> int:
     internal = sorted(r for r in requirements if re.match(r"httk[-_.]", r, re.IGNORECASE))
     unpublished = []
     for requirement in internal:
-        command = ["uv", "pip", "compile", "-", "--no-deps", "--quiet", "--no-header"]
+        # A dependency may have been published since the preceding release cycle.
+        command = ["uv", "pip", "compile", "-", "--no-deps", "--quiet", "--no-header", "--refresh"]
         command += ["--python-version", "3.12", "--python-platform", "linux"]
         try:
             result = subprocess.run(command, input=requirement + "\n", capture_output=True, text=True, check=False)
