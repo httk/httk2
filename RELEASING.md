@@ -20,13 +20,14 @@ index.
 
 The coordinated targets below handle this by **deferring** rather than
 failing: an untagged module whose `httk-*` requirements do not resolve from
-PyPI is skipped with a `deferring` message, and the `httk.github.io`
-snapshot and the `httk2` metapackage are deferred while any module is. Tags
-are never recreated, so releasing a set of modules that evolve together is a
-loop of release cycles: each cycle tags what is publishable, those tags are
-published through GitHub, and the next cycle picks up the modules that were
-waiting for them. The loop ends when the final step reports that nothing new
-was tagged.
+PyPI is skipped with a `deferring` message. Runtime tags are provisional until
+PyPI accepts that exact project version; a failed final build may therefore be
+fixed, rechecked, and retagged. The `httk.github.io` snapshot and the `httk2`
+metapackage wait until every selected runtime version is on PyPI, so they never
+pin a provisional tag. Releasing modules that evolve together is consequently
+a loop of release cycles: each cycle tags what is publishable, those tags are
+published through GitHub, and the next cycle picks up modules that were waiting
+for them. The loop ends when the final step reports that nothing new was tagged.
 
 ## One-time setup
 
@@ -98,11 +99,12 @@ cycle. This requires `uv` on `PATH`, as do the module release gates.
    Once the runtime repositories are clean, it pins the `httk.github.io`
    submodules to the selected release commits, sets its `project.version` to
    the `httk2` version, regenerates its ecosystem manifest and documentation
-   lock, and commits that snapshot. If that version is already tagged for
-   `httk.github.io` and the snapshot still changed, preparation stops: bump
+   lock, and commits that snapshot, but only after the exact selected version
+   of every runtime module is present on PyPI. If that version is already
+   tagged for `httk.github.io` and the snapshot still changed, preparation stops: bump
    the `httk2` version, or repair the published documentation instead. While any
-   module is deferred, `httk.github.io` and `httk2` are deferred instead and
-   this step ends after the runtime modules.
+   module is deferred or still provisional, `httk.github.io` and `httk2` are
+   deferred instead and this step ends after the runtime modules.
 
 4. Sign any generated commits, then push all candidate branches:
 
@@ -123,11 +125,12 @@ cycle. This requires `uv` on `PATH`, as do the module release gates.
    push. Each new runtime version runs its normal tests on Python 3.12, 3.13,
    and 3.14, along with its CI, documentation, distribution, dependency, and
    isolated-wheel checks. It then checks the pinned aggregate documentation
-   snapshot and the `httk2` distribution. Already released versions are reused
-   without retesting unreleased commits beyond their tags, and deferred
-   modules are skipped in the same way as during preparation. The final
-   release target refreshes and validates remote refs immediately before
-   publishing.
+   snapshot and the `httk2` distribution once all runtime versions are on
+   PyPI. Published versions are reused; provisional tagged versions are checked
+   again so a corrected candidate cannot bypass the release gates. Deferred
+   modules are skipped in the same way as during preparation. The final release
+   target refreshes and validates remote refs and PyPI publication state
+   immediately before publishing.
 
 6. If every check succeeds, fast-forward each runtime module's remote
    `main` to `develop`, create each signed `v<project.version>` tag, and push
@@ -139,31 +142,39 @@ cycle. This requires `uv` on `PATH`, as do the module release gates.
 
    Runtime modules are pushed first, followed by `httk.github.io` and `httk2`.
    This step runs where Git can authenticate; it needs only Git and Python
-   3.12, not an httk installation, `uv`, or network access beyond Git. It
-   identifies deferred modules offline: an untagged module whose committed
+   3.12, not an httk installation or `uv`. It uses Git remotes and PyPI's JSON
+   API. It identifies deferred modules from their committed inputs: a
+   provisional module whose
    documentation lock on `develop` is stale for its `pyproject.toml` was not
    prepared, either because preparation deferred it or because preparation
    was never run, and is not tagged. The target updates Git refs directly and
-   does not change branches or read the worktrees. Runtime versions and tags come from `develop`, which is also
-   pushed to `main`; documentation and metapackage versions and tags come from
-   `main`. It stops before creating any tags if a local release branch is not
-   based on its remote, a runtime `main` cannot be fast-forwarded, or a release
-   tag already exists.
+   does not change branches or read the worktrees. Runtime versions and tags
+   come from `develop`, which is also pushed to `main`; documentation and
+   metapackage versions and tags come from `main`. It stops before creating any
+   tags if a local release branch is not based on its remote or a runtime
+   `main` cannot be fast-forwarded.
 
-   Repositories whose `v<project.version>` tags already exist remotely are
-   left unchanged. This permits one block release to combine unchanged 2.1.0
-   modules with new 2.1.1 modules. Deferred modules, and with them
-   `httk.github.io` and `httk2`, are not tagged. The target ends with either
-   `Tagged: ...`, listing the new tags, or `Nothing new was tagged; the
-   release cycle is complete`, which ends the loop.
+   Published `v<project.version>` tags that already exist remotely are left
+   unchanged. For an existing provisional tag, the target verifies that the
+   remote tag identifies `develop` and advances `main` to that commit. This
+   permits a failed candidate to be fixed and retagged before PyPI acceptance,
+   and permits one block release to combine unchanged 2.1.0 modules with new
+   2.1.1 modules. Deferred modules are not tagged;
+   `httk.github.io` and `httk2` are also withheld while any selected runtime
+   version is absent from PyPI. The target ends with either
+   `Tagged: ...`, listing the new tags; a waiting message while provisional
+   runtime releases remain; or `Nothing new was tagged; the release cycle is
+   complete`, which ends the loop.
 
-   A tag is not yet a release. If a check fails after tagging but before the
-   GitHub release is published, fix the branch, delete the tag locally and on
-   `origin`, and repeat the cycle from step 2; the tag is recreated on the new
-   commit. Each runtime tag push deploys that version's release documentation,
-   and the deploy job replaces earlier documentation for a version that is
-   not on PyPI yet. Once the version is on PyPI, its documentation is
-   immutable and changes go through the manual repair workflow.
+   A runtime tag is provisional until PyPI accepts its exact project version.
+   If the final GitHub release build fails before upload, fix and sign the
+   branch, delete or move the tag locally and on `origin`, and repeat the cycle
+   from step 2; the aggregate snapshot has not yet been created. Each runtime
+   tag push deploys that version's release documentation, and the deploy job
+   replaces earlier documentation while the version is absent from PyPI. Once
+   the version is on PyPI, its tag and documentation are immutable and changes
+   require a new package version (or the approved documentation repair workflow
+   when only the deployed documentation is wrong).
 
 7. In GitHub, create and publish releases using the tags listed in step 6.
    Publish the runtime module releases in dependency order and wait for their
@@ -172,10 +183,12 @@ cycle. This requires `uv` on `PATH`, as do the module release gates.
    inventories. If step 6 reported deferred modules, wait until the new
    versions are visible on PyPI and at `https://docs.httk.org/<module>/v<version>/`,
    then start the next cycle at step 2: the published modules are reused by
-   their tags, and the previously deferred modules are prepared, checked, and
-   tagged. The `httk2` release is created in the cycle that tags it, after
-   every module it requires has been published. The `httk.github.io` tag push
-   starts the versioned aggregate documentation deployment directly.
+   their tags, stale aggregate submodule tag caches are synchronized to those
+   final tags, and the previously deferred modules are prepared, checked, and
+   tagged. The aggregate documentation and `httk2` are prepared and tagged only
+   after every selected module version has been published. The `httk2` release
+   is then created from that final cycle. The `httk.github.io` tag push starts
+   the versioned aggregate documentation deployment directly.
 
 The pushes are atomic within each repository. Git cannot make pushes across
 separate repositories atomic, so if a later remote push fails, retry it after

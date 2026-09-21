@@ -29,30 +29,41 @@ READ_PROJECT_EXTRAS = $(PYTHON) -c 'import sys, tomllib; print(",".join(tomllib.
 # published. A module with unpublished requirements is deferred to a later
 # release cycle instead of failing the coordinated targets (see RELEASING.md).
 UNPUBLISHED_REQUIREMENTS = $(PYTHON) tools/unpublished_requirements.py
+UNPUBLISHED_PROJECT = $(PYTHON) tools/unpublished_requirements.py --project
 
-# Print the untagged modules whose httk-* requirements are unpublished. The
+# Print the provisional modules whose httk-* requirements are unpublished. The
 # httk.github.io snapshot and the httk2 metapackage wait until this is empty.
 # Needs uv and the package index; used by preparation and checking.
 define deferred_modules
 for r in $(HTTK_MODULES); do \
   repo="$(MODULES_DIR)/$$r"; \
-  tag="v$$(git -C "$$repo" show develop:pyproject.toml | $(READ_PROJECT_VERSION))" || exit 1; \
-  git -C "$$repo" show-ref --verify --quiet "refs/tags/$$tag" && continue; \
+  published="$$(git -C "$$repo" show develop:pyproject.toml | $(UNPUBLISHED_PROJECT))" || exit 1; \
+  test -n "$$published" || continue; \
   blocked="$$(git -C "$$repo" show develop:pyproject.toml | $(UNPUBLISHED_REQUIREMENTS))" || exit 1; \
   test -z "$$blocked" || printf ' %s' "$$r"; \
 done
 endef
 
-# Print the untagged modules whose committed documentation lock on develop is
-# stale for their pyproject: preparation never refreshes a deferred module, so
-# these are the modules it deferred (or that were never prepared). Offline, and
-# needs only Git and Python 3.12 (the docs CLI is stdlib-only); used by the
+# Print modules whose selected exact version is not yet on PyPI. Their tags are
+# still provisional, so the aggregate docs snapshot and metapackage must wait.
+define unpublished_modules
+for r in $(HTTK_MODULES); do \
+  repo="$(MODULES_DIR)/$$r"; \
+  unpublished="$$(git -C "$$repo" show develop:pyproject.toml | $(UNPUBLISHED_PROJECT))" || exit 1; \
+  test -z "$$unpublished" || printf ' %s' "$$r"; \
+done
+endef
+
+# Print the provisional modules whose committed documentation lock on develop
+# is stale for their pyproject: preparation never refreshes a deferred module,
+# so these are the modules it deferred (or that were never prepared). Needs
+# only Git, Python 3.12, and PyPI (the docs CLI is stdlib-only); used by the
 # tag-and-push step, which runs where httk and uv are not installed.
 define unprepared_modules
 for r in $(HTTK_MODULES); do \
   repo="$(MODULES_DIR)/$$r"; \
-  tag="v$$(git -C "$$repo" show develop:pyproject.toml | $(READ_PROJECT_VERSION))" || exit 1; \
-  git -C "$$repo" show-ref --verify --quiet "refs/tags/$$tag" && continue; \
+  published="$$(git -C "$$repo" show develop:pyproject.toml | $(UNPUBLISHED_PROJECT))" || exit 1; \
+  test -n "$$published" || continue; \
   work="$$(mktemp -d)"; \
   git -C "$$repo" archive develop pyproject.toml docs/requirements.lock 2>/dev/null | tar -x -C "$$work"; \
   PYTHONPATH="$(MODULES_DIR)/httk-core/src" $(PYTHON) -m httk.core.docs lock-check "$$work" >/dev/null 2>&1 \
@@ -176,9 +187,15 @@ release-prepare-all:
 	  repo="$(MODULES_DIR)/$$r"; \
 	  version="$$($(READ_PROJECT_VERSION) < "$$repo/pyproject.toml")" || exit 1; \
 	  tag="v$$version"; \
-	  if git -C "$$repo" show-ref --verify --quiet "refs/tags/$$tag"; then \
-	    echo "== $$r: reusing existing $$tag"; \
+	  published="$$($(UNPUBLISHED_PROJECT) < "$$repo/pyproject.toml")" || exit 1; \
+	  if git -C "$$repo" show-ref --verify --quiet "refs/tags/$$tag" && test -z "$$published"; then \
+	    echo "== $$r: reusing published $$tag"; \
 	  else \
+	    if git -C "$$repo" show-ref --verify --quiet "refs/tags/$$tag"; then \
+	      test "$$(git -C "$$repo" rev-parse "$$tag^{}")" = "$$(git -C "$$repo" rev-parse develop)" || { \
+	        echo "== $$r: provisional $$tag does not identify develop; move it to the signed candidate and rerun"; exit 1; }; \
+	      echo "== $$r: rechecking provisional $$tag"; \
+	    fi; \
 	    blocked="$$($(UNPUBLISHED_REQUIREMENTS) --explain < "$$repo/pyproject.toml")" || exit 1; \
 	    if test -n "$$blocked"; then \
 	      echo "== $$r: deferring $$tag; unpublished requirements: $$blocked"; \
@@ -198,6 +215,10 @@ release-prepare-all:
 	  deferred="$$($(deferred_modules))" || exit 1; \
 	  if test -n "$$deferred"; then \
 	    echo "== $(HTTK_DOCS_REPOSITORY), httk2: deferred until the deferred modules are released:$$deferred"; exit 0; \
+	  fi; \
+	  unpublished="$$($(unpublished_modules))" || exit 1; \
+	  if test -n "$$unpublished"; then \
+	    echo "== $(HTTK_DOCS_REPOSITORY), httk2: deferred until these provisional module releases are on PyPI:$$unpublished"; exit 0; \
 	  fi; \
 	  temporary_tags=""; \
 	  cleanup_tags() { \
@@ -221,7 +242,10 @@ release-prepare-all:
 	    else \
 	      commit="$$(git -C "$$source" rev-parse develop)"; \
 	    fi; \
-	    git -C "$$nested" fetch "$$source" develop --tags; \
+	    git -C "$$nested" fetch "$$source" develop; \
+	    if git -C "$$source" show-ref --verify --quiet "refs/tags/$$tag"; then \
+	      git -C "$$nested" fetch --force "$$source" "refs/tags/$$tag:refs/tags/$$tag"; \
+	    fi; \
 	    git -C "$$nested" checkout --detach "$$commit"; \
 	    if git -C "$$nested" show-ref --verify --quiet "refs/tags/$$tag"; then \
 	      test "$$(git -C "$$nested" rev-parse "$$tag^{}")" = "$$commit" || { \
@@ -271,9 +295,15 @@ release-check-all:
 	  repo="$(MODULES_DIR)/$$r"; \
 	  version="$$($(READ_PROJECT_VERSION) < "$$repo/pyproject.toml")" || exit 1; \
 	  tag="v$$version"; \
-	  if git -C "$$repo" show-ref --verify --quiet "refs/tags/$$tag"; then \
-	    echo "== $$r: reusing existing $$tag"; \
+	  published="$$($(UNPUBLISHED_PROJECT) < "$$repo/pyproject.toml")" || exit 1; \
+	  if git -C "$$repo" show-ref --verify --quiet "refs/tags/$$tag" && test -z "$$published"; then \
+	    echo "== $$r: reusing published $$tag"; \
 	  else \
+	    if git -C "$$repo" show-ref --verify --quiet "refs/tags/$$tag"; then \
+	      test "$$(git -C "$$repo" rev-parse "$$tag^{}")" = "$$(git -C "$$repo" rev-parse develop)" || { \
+	        echo "== $$r: provisional $$tag does not identify develop; move it to the signed candidate and rerun"; exit 1; }; \
+	      echo "== $$r: checking provisional $$tag"; \
+	    fi; \
 	    blocked="$$($(UNPUBLISHED_REQUIREMENTS) --explain < "$$repo/pyproject.toml")" || exit 1; \
 	    if test -n "$$blocked"; then \
 	      echo "== $$r: deferring $$tag; unpublished requirements: $$blocked"; \
@@ -290,6 +320,10 @@ release-check-all:
 	  deferred="$$($(deferred_modules))" || exit 1; \
 	  if test -n "$$deferred"; then \
 	    echo "== $(HTTK_DOCS_REPOSITORY), httk2: deferred until the deferred modules are released:$$deferred"; exit 0; \
+	  fi; \
+	  unpublished="$$($(unpublished_modules))" || exit 1; \
+	  if test -n "$$unpublished"; then \
+	    echo "== $(HTTK_DOCS_REPOSITORY), httk2: deferred until these provisional module releases are on PyPI:$$unpublished"; exit 0; \
 	  fi; \
 	  temporary_tags=""; \
 	  cleanup_tags() { \
@@ -335,15 +369,22 @@ release-check-all:
 	  test -z "$$(git status --porcelain)" || { echo "== httk2: checks changed files"; exit 1; }
 
 # This operates on refs rather than checking out main. Each repository push is
-# atomic, so its main branch and release tag are published together.
+# atomic, so its main branch and release tag are published together. Runtime
+# tags remain provisional until PyPI accepts their exact project versions;
+# aggregate docs and httk2 are deferred until that boundary is crossed.
 release-merge-tag-and-push-main:
 	@set -eu; \
 	deferred="$$($(unprepared_modules))" || exit 1; \
-	test -z "$$deferred" || echo "== deferring$$deferred, $(HTTK_DOCS_REPOSITORY), and httk2: release inputs not prepared (unpublished requirements, or preparation not run)"; \
+	unpublished="$$($(unpublished_modules))" || exit 1; \
+	test -z "$$deferred" || echo "== deferring$$deferred: release inputs not prepared (unpublished requirements, or preparation not run)"; \
+	test -z "$$unpublished" || echo "== deferring $(HTTK_DOCS_REPOSITORY) and httk2 until these provisional module releases are on PyPI:$$unpublished"; \
 	skip_deferred() { \
 	  case " $$deferred " in *" $$1 "*) return 0;; esac; \
 	  case " $(HTTK_MODULES) " in *" $$1 "*) return 1;; esac; \
-	  test -n "$$deferred"; \
+	  test -n "$$deferred$$unpublished"; \
+	}; \
+	is_provisional() { \
+	  case " $$unpublished " in *" $$1 "*) return 0;; *) return 1;; esac; \
 	}; \
 	for spec in $(HTTK_RELEASE_REFS); do \
 	  repo=$${spec%:*}; branch=$${spec#*:}; \
@@ -352,18 +393,29 @@ release-merge-tag-and-push-main:
 	  test -d "$$repo/.git" || { echo "== $$name: not checked out (run 'make pull')"; exit 1; }; \
 	  echo "== $$name: fetching release refs"; \
 	  refs=main; test "$$branch" = main || refs="$$refs $$branch"; \
-	  git -C "$$repo" fetch origin $$refs --tags; \
+	  git -C "$$repo" fetch origin $$refs; \
 	  version="$$(git -C "$$repo" show "$$branch:pyproject.toml" | $(READ_PROJECT_VERSION))"; \
 	  tag="v$$version"; \
+	  remote_tag=0; \
 	  if git -C "$$repo" ls-remote --exit-code --tags origin "refs/tags/$$tag" >/dev/null 2>&1; then \
-	    echo "== $$name: reusing existing remote $$tag"; continue; \
+	    remote_tag=1; \
+	    if ! is_provisional "$$name"; then \
+	      echo "== $$name: reusing published remote $$tag"; continue; \
+	    fi; \
+	    remote_commit="$$(git -C "$$repo" ls-remote --tags origin "refs/tags/$$tag^{}" | awk 'NR == 1 { print $$1 }')"; \
+	    test -n "$$remote_commit" || remote_commit="$$(git -C "$$repo" ls-remote --tags origin "refs/tags/$$tag" | awk 'NR == 1 { print $$1 }')"; \
+	    test "$$remote_commit" = "$$(git -C "$$repo" rev-parse "$$branch")" || { \
+	      echo "== $$name: provisional remote $$tag does not identify $$branch; move it to the signed candidate and rerun"; exit 1; }; \
+	    echo "== $$name: provisional remote $$tag identifies $$branch"; \
 	  fi; \
 	  git -C "$$repo" merge-base --is-ancestor "origin/$$branch" "$$branch" || { \
 	    echo "== $$name: local $$branch is not based on origin/$$branch"; exit 1; }; \
 	  test "$$branch" = main || git -C "$$repo" merge-base --is-ancestor origin/main "$$branch" || { \
 	    echo "== $$name: $$branch cannot be fast-forwarded onto main"; exit 1; }; \
-	  ! git -C "$$repo" show-ref --verify --quiet "refs/tags/$$tag" || { \
-	    echo "== $$name: tag $$tag already exists"; exit 1; }; \
+	  if test $$remote_tag = 0; then \
+	    ! git -C "$$repo" show-ref --verify --quiet "refs/tags/$$tag" || { \
+	      echo "== $$name: local tag $$tag exists but is absent from origin"; exit 1; }; \
+	  fi; \
 	done; \
 	tagged=""; for spec in $(HTTK_RELEASE_REFS); do \
 	  repo=$${spec%:*}; branch=$${spec#*:}; \
@@ -372,7 +424,13 @@ release-merge-tag-and-push-main:
 	  version="$$(git -C "$$repo" show "$$branch:pyproject.toml" | $(READ_PROJECT_VERSION))"; \
 	  tag="v$$version"; \
 	  if git -C "$$repo" ls-remote --exit-code --tags origin "refs/tags/$$tag" >/dev/null 2>&1; then \
-	    echo "== $$name: keeping existing $$tag"; continue; \
+	    if ! is_provisional "$$name"; then \
+	      echo "== $$name: keeping published $$tag"; continue; \
+	    fi; \
+	    echo "== $$name: advancing main to provisional $$tag"; \
+	    if test "$$branch" = develop; then refs="develop:develop develop:main"; else refs="main:main"; fi; \
+	    git -C "$$repo" push --atomic origin $$refs || exit 1; \
+	    continue; \
 	  fi; \
 	  echo "== $$name: signing and pushing $$tag"; \
 	  git -C "$$repo" -c user.name="$(GIT_USER_NAME)" -c user.email="$(GIT_USER_EMAIL)" \
@@ -385,6 +443,8 @@ release-merge-tag-and-push-main:
 	if test -n "$$tagged"; then \
 	  echo "== Tagged:$$tagged"; \
 	  echo "== Create the GitHub releases for these tags; once they are on PyPI, start the next release cycle with make pull"; \
+	elif test -n "$$deferred$$unpublished"; then \
+	  echo "== No new tags in this cycle; publish or wait for the provisional runtime releases, then repeat the cycle"; \
 	else \
 	  echo "== Nothing new was tagged; the release cycle is complete"; \
 	fi
