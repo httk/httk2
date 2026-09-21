@@ -127,7 +127,8 @@ cycle. This requires `uv` on `PATH`, as do the module release gates.
    isolated-wheel checks. It then checks the pinned aggregate documentation
    snapshot and the `httk2` distribution once all runtime versions are on
    PyPI. Published versions are reused; provisional tagged versions are checked
-   again so a corrected candidate cannot bypass the release gates. Deferred
+   again against `develop` so a corrected candidate cannot bypass the release
+   gates. Move a stale provisional tag only after those checks pass. Deferred
    modules are skipped in the same way as during preparation. The final release
    target refreshes and validates remote refs and PyPI publication state
    immediately before publishing.

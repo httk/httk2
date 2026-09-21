@@ -192,8 +192,9 @@ release-prepare-all:
 	    echo "== $$r: reusing published $$tag"; \
 	  else \
 	    if git -C "$$repo" show-ref --verify --quiet "refs/tags/$$tag"; then \
-	      test "$$(git -C "$$repo" rev-parse "$$tag^{}")" = "$$(git -C "$$repo" rev-parse develop)" || { \
-	        echo "== $$r: provisional $$tag does not identify develop; move it to the signed candidate and rerun"; exit 1; }; \
+	      if test "$$(git -C "$$repo" rev-parse "$$tag^{}")" != "$$(git -C "$$repo" rev-parse develop)"; then \
+	        echo "== $$r: provisional $$tag must be moved to develop after the release checks pass"; \
+	      fi; \
 	      echo "== $$r: rechecking provisional $$tag"; \
 	    fi; \
 	    blocked="$$($(UNPUBLISHED_REQUIREMENTS) --explain < "$$repo/pyproject.toml")" || exit 1; \
@@ -300,8 +301,9 @@ release-check-all:
 	    echo "== $$r: reusing published $$tag"; \
 	  else \
 	    if git -C "$$repo" show-ref --verify --quiet "refs/tags/$$tag"; then \
-	      test "$$(git -C "$$repo" rev-parse "$$tag^{}")" = "$$(git -C "$$repo" rev-parse develop)" || { \
-	        echo "== $$r: provisional $$tag does not identify develop; move it to the signed candidate and rerun"; exit 1; }; \
+	      if test "$$(git -C "$$repo" rev-parse "$$tag^{}")" != "$$(git -C "$$repo" rev-parse develop)"; then \
+	        echo "== $$r: provisional $$tag must be moved to develop after these release checks pass"; \
+	      fi; \
 	      echo "== $$r: checking provisional $$tag"; \
 	    fi; \
 	    blocked="$$($(UNPUBLISHED_REQUIREMENTS) --explain < "$$repo/pyproject.toml")" || exit 1; \
