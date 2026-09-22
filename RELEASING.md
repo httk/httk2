@@ -244,3 +244,12 @@ Replace `2.0.0` with the version being tested.
 The workflow rejects a Git tag that does not match `project.version`, rebuilds
 the distributions from the tagged source, checks them, and publishes them via
 PyPI Trusted Publishing.
+
+## Moving git tags
+
+Never move version tags for releases that have been pushed all the way to PyPi.
+Other tags can be moved as part of the release process.
+
+To move a tag that already has been pushed upstream to the latest commit, do:
+
+  VER=v2.1.1 && git push --delete origin "$VER" && git tag -d "$VER" && git tag -s "$VER" -m "$VER" && git push --tags
