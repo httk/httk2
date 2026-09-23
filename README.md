@@ -79,3 +79,21 @@ documentation checkout, and this metapackage in one resolution. This supplies th
 dependencies used by release preparation and the broadest local test coverage.
 Tests that exercise external database servers or browser runtimes still require
 those services or tools to be started separately.
+
+## Releasing a batch
+
+Mark the modules to release with local `vX.Y.Z-rc0` tags on `develop`, with
+`project.version` already set to the final `X.Y.Z`. Then run:
+
+```console
+make release-check-all                 # one isolated code matrix, no docs
+make release-docs-build                # strict docs pinned to the tested batch
+# Commit and push the module documentation changes.
+make release-aggregate-docs-build      # aggregate docs at final module commits
+# Commit and push the aggregate documentation changes.
+make release-merge-tag-and-push-main    # signed final tags; prints release groups
+```
+
+Unselected modules use their latest stable-tagged main-branch commits.
+Documentation corrections reuse the code result. See [RELEASING.md](RELEASING.md)
+for the commit ordering, retained reports, retry rules and GitHub publication.
