@@ -147,3 +147,6 @@ release-aggregate-docs-build:
 
 release-merge-tag-and-push-main:
 	$(RELEASE_BATCH) publish --user-name "$(GIT_USER_NAME)" --user-email "$(GIT_USER_EMAIL)"
+
+status:
+	ls modules | xargs -i bash -c "echo -e \"\n\n== {}\"; git -C modules/{} status"
