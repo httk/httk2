@@ -54,41 +54,53 @@ This repository's `Makefile` doubles as a small workspace manager for working
 on all *httk₂* modules and the aggregate documentation site at once:
 
 ```console
-make checkout   # clone missing repositories and check out release branches
-make fetch      # git fetch in every managed repository
-make pull       # check out and fast-forward every release branch
-make public-remotes # use verified public HTTPS fetch URLs, retaining SSH pushes
-make push       # git push in every repository, including this one
-make install    # editable-install the workspace, including development,
-                # documentation, release, and optional integration extras
+make checkout          # initial setup; alias for checkout-develop
+make checkout-develop  # clone missing repositories; select develop where available
+make checkout-main     # clone missing repositories; select main where available
+make public-remotes    # configure verified public HTTPS fetch URLs and SSH pushes
+make fetch             # git fetch in every managed repository
+make pull              # fast-forward current branches from their configured upstreams
+make update-submodules # update the documentation site's pinned submodule checkouts
+make push              # git push in every repository, including this one
+make install           # editable-install the workspace with all declared extras
 ```
 
-`checkout` clones the six default modules over SSH from
-`git@github.com:httk/...` when they are missing. Every repository found under
-`modules/` is managed: one that carries the httk-module-template release
-infrastructure (`tools/check_release.py`) is a release module and is kept on
-`develop` if that branch exists locally or on `origin`. Otherwise it keeps its
-current branch (a new clone starts on the remote's default branch).
-`httk.github.io` is kept on `main`, and any other repository is a
-development repository that `fetch`, `pull`, and `push` handle on whatever
-branch it has checked out. Moving a repository into `modules/` is all it takes
-to include it; adopting the module template later promotes it to a release
-module. `pull` also keeps this metapackage checkout on `main`.
-`fetch` and `push` continue past individual failures and exit non-zero if any
+`checkout` is an alias for `checkout-develop`. The checkout targets clone missing
+modules and the documentation repository over SSH from `git@github.com:httk/...`.
+They select the requested branch in this repository and every checkout under
+`modules/` when that branch exists locally or on `origin`. Repositories without
+that branch keep their current branch; a new clone starts on the remote's default.
+The documentation repository, `httk.github.io`, selects `main` in both modes.
+Remote lookup errors fail the command rather than being treated as absent branches.
+
+Every repository found under `modules/` is managed. One carrying the module
+template's release infrastructure (`tools/check_release.py`) is included in
+coordinated release discovery; branch selection also covers other development
+repositories. Moving a repository into `modules/` is enough to include it.
+
+`pull` uses each current branch's configured upstream, including this metapackage
+checkout, with fast-forward-only updates and tag fetching. It does not clone
+missing repositories, select branches, probe public URLs, synchronize submodule
+URLs, or update submodule checkouts. A branch without an upstream requires you to
+configure one explicitly. `fetch`, `pull` (after the metapackage pull succeeds),
+and `push` continue through individual module failures and exit non-zero if any
 repository failed.
 
-`public-remotes` configures this checkout, the checked-out repositories under
-`modules/`, and their registered Git submodules. It checks GitHub HTTPS access
-without credentials before setting an `origin` fetch URL, keeping an SSH push
-URL in local Git configuration. Private, unreachable, and unsupported URLs are
-skipped. Registered submodule SSH URLs supply their push destinations; existing
-custom push destinations are preserved. No committed `.gitmodules` files are
-changed. Run the helper again after adding repositories or changing visibility.
-Registrations inside an uninitialized submodule become discoverable after that
-submodule is initialized; rerun the helper to configure those descendants.
-It also enables this configuration during subsequent `make pull` submodule
-updates, so `git submodule sync` does not undo it. To stop that automatic setup,
-run `git config --local httk.publicRemotes false`; existing URL settings remain.
+`public-remotes` is an explicit, one-time configuration command for this checkout,
+the repositories under `modules/`, and their registered Git submodules. It checks
+GitHub HTTPS access without credentials before setting an `origin` fetch URL,
+keeping an SSH push URL in local Git configuration. Private, unreachable, and
+unsupported URLs are skipped. Registered submodule SSH URLs supply their push
+destinations; existing custom push destinations are preserved. No committed
+`.gitmodules` files are changed. Run the helper again after adding repositories or
+changing visibility. Registrations inside an uninitialized submodule become
+discoverable after that submodule is initialized; rerun the helper to configure
+those descendants. The former `httk.publicRemotes` setting is no longer used.
+
+`update-submodules` separately updates the documentation site's submodules to its
+committed revisions using existing URL configuration. If registered URLs change,
+run `git -C modules/httk.github.io submodule sync --recursive` explicitly, followed
+by `make public-remotes` if public HTTPS fetches are desired.
 
 `install` refuses to run without an activated virtual environment. It installs
 every declared extra from every checkout with a `pyproject.toml`, the aggregate

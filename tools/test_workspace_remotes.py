@@ -222,36 +222,54 @@ class WorkspaceRemotesTests(unittest.TestCase):
         )
         self.assertEqual(registered, (parent / ".gitmodules").read_bytes())
 
-    def test_cli_opt_in_belongs_to_invoking_repository(self) -> None:
-        """Store CLI opt-in only in the repository that invokes the helper."""
+    def test_cli_configures_explicit_targets_without_persistent_opt_in(self) -> None:
+        """Configure explicitly supplied targets without storing state."""
 
-        invoking = self.repository("invoking")
         target = self.repository("target")
         self.git(
             "remote", "add", "origin", "git@github.com:httk/example.git", cwd=target
         )
         with (
             mock.patch("tools.workspace_remotes._Configurator") as configurator,
-            mock.patch("tools.workspace_remotes.Path.cwd", return_value=invoking),
         ):
-            workspace_remotes.main(["--enable", str(target)])
+            workspace_remotes.main([str(target)])
             configurator.return_value.configure_tree.assert_called_once_with(target)
-        self.assertEqual(
-            "true", self.git("config", "--get", "httk.publicRemotes", cwd=invoking)
-        )
         with self.assertRaises(subprocess.CalledProcessError):
             self.git("config", "--get", "httk.publicRemotes", cwd=target)
 
-        configurator.reset_mock()
+    def test_probe_failure_reports_git_reason(self) -> None:
+        """Include the anonymous-probe reason in the skip output."""
+
+        repository = self.repository("private")
         self.git(
-            "config", "--local", "--bool", "httk.publicRemotes", "false", cwd=invoking
+            "remote", "add", "origin", "git@github.com:httk/private.git", cwd=repository
         )
-        with (
-            mock.patch("tools.workspace_remotes._Configurator") as configurator,
-            mock.patch("tools.workspace_remotes.Path.cwd", return_value=invoking),
+        with mock.patch("builtins.print") as print_mock:
+            workspace_remotes.configure_repository(
+                repository,
+                probe=lambda url: (
+                    False,
+                    "fatal: could not read Username for 'https://github.com'",
+                ),
+            )
+        print_mock.assert_any_call(
+            f"== {repository}: public probe failed (fatal: could not read Username for "
+            "'https://github.com'); skipped"
+        )
+
+    def test_probe_redacts_credentials(self) -> None:
+        """Redact URL userinfo before exposing a Git diagnostic."""
+
+        with mock.patch(
+            "tools.workspace_remotes.subprocess.run",
+            return_value=subprocess.CompletedProcess(
+                [], 128, stderr="fatal: https://token:secret@example.invalid/repo"
+            ),
         ):
-            workspace_remotes.main(["--if-enabled", str(target)])
-            configurator.return_value.configure_tree.assert_not_called()
+            result = workspace_remotes._probe_public("https://example.invalid/repo")
+        self.assertEqual(
+            (False, "fatal: https://<redacted>@example.invalid/repo"), result
+        )
 
     def test_probe_has_isolated_git_environment(self) -> None:
         """Remove inherited Git configuration from anonymous probes."""
@@ -276,6 +294,7 @@ class WorkspaceRemotesTests(unittest.TestCase):
         self.assertNotIn("GIT_CONFIG_COUNT", options["env"])
         self.assertNotEqual(os.getcwd(), options["cwd"])
         self.assertEqual(subprocess.DEVNULL, options["stdin"])
+        self.assertEqual(subprocess.PIPE, options["stderr"])
 
 
 if __name__ == "__main__":

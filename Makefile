@@ -6,8 +6,8 @@ DIST_DIR ?= dist
 # and are listed in dependency order. Any other repository found there is
 # picked up automatically: one carrying the httk-module-template release
 # infrastructure (tools/check_release.py) is a release module, released from
-# develop by the coordinated targets when that branch exists. Other repositories
-# keep their current branch during pull, fetch, and push.
+# develop by the coordinated targets when that branch exists. Branch selection
+# is explicit; pull, fetch, and push use the current branches and remote settings.
 MODULES_DIR ?= modules
 HTTK_GIT_BASE ?= git@github.com:httk
 HTTK_DEFAULT_MODULES ?= httk-core httk-store httk-atomistic httk-analyse httk-serve httk-workflow
@@ -18,8 +18,9 @@ HTTK_MODULES ?= $(HTTK_DEFAULT_MODULES) $(sort $(foreach r,\
 	$(if $(wildcard $(MODULES_DIR)/$(r)/tools/check_release.py),$(r))))
 HTTK_DEV_REPOSITORIES ?= $(filter-out $(HTTK_MODULES) $(HTTK_DOCS_REPOSITORY),$(HTTK_CHECKED_OUT))
 HTTK_REPOSITORIES ?= $(HTTK_MODULES) $(HTTK_DOCS_REPOSITORY) $(HTTK_DEV_REPOSITORIES)
-HTTK_MANAGED_REFS = $(foreach r,$(HTTK_MODULES),$(MODULES_DIR)/$(r):develop) \
-	$(MODULES_DIR)/$(HTTK_DOCS_REPOSITORY):main
+HTTK_CHECKOUT_BRANCH = develop
+HTTK_CHECKOUT_REFS = .:$(HTTK_CHECKOUT_BRANCH) $(foreach r,$(HTTK_REPOSITORIES),\
+	$(MODULES_DIR)/$(r):$(if $(filter $(HTTK_DOCS_REPOSITORY),$(r)),main,$(HTTK_CHECKOUT_BRANCH)))
 GIT_USER_NAME ?= Rickard Armiento
 GIT_USER_EMAIL ?= rickard-gpg@armiento.net
 READ_PROJECT_VERSION = $(PYTHON) -c 'import sys, tomllib; print(tomllib.load(sys.stdin.buffer)["project"]["version"])'
@@ -41,12 +42,17 @@ define git_foreach
 	done; exit $$fail
 endef
 
-.PHONY: clean dist-clean dist dist-check release-check release-prepare checkout fetch pull push \
+.PHONY: clean dist-clean dist dist-check release-check release-prepare checkout checkout-develop checkout-main update-submodules fetch pull push \
 	install public-remotes ci release-check-all release-docs-build release-aggregate-docs-build release-merge-tag-and-push-main
 
-checkout:
+checkout: checkout-develop
+
+checkout-develop: HTTK_CHECKOUT_BRANCH = develop
+checkout-main: HTTK_CHECKOUT_BRANCH = main
+
+checkout-develop checkout-main:
 	@mkdir -p $(MODULES_DIR)
-	@for spec in $(HTTK_MANAGED_REFS); do \
+	@for spec in $(HTTK_CHECKOUT_REFS); do \
 	  repo=$${spec%:*}; branch=$${spec#*:}; name=$$(basename "$$repo"); \
 	  if [ ! -e "$$repo/.git" ]; then \
 	    echo "== $$name: cloning"; \
@@ -57,8 +63,8 @@ checkout:
 	    git -C "$$repo" switch "$$branch" || exit 1; \
 	  else \
 	    git -C "$$repo" ls-remote --exit-code --heads origin "refs/heads/$$branch" >/dev/null; result=$$?; \
-	    if [ "$$result" -eq 2 ] && [ "$$branch" = develop ]; then \
-	      echo "== $$name: no develop branch; keeping $$(git -C "$$repo" branch --show-current)"; \
+	    if [ "$$result" -eq 2 ]; then \
+	      echo "== $$name: no $$branch branch; keeping $$(git -C "$$repo" branch --show-current)"; \
 	      continue; \
 	    fi; \
 	    [ "$$result" -eq 0 ] || exit 1; \
@@ -69,37 +75,19 @@ checkout:
 	    git -C "$$repo" config "branch.$$branch.merge" "refs/heads/$$branch" || exit 1; \
 	  fi; \
 	done
-	@for r in $(HTTK_DEV_REPOSITORIES); do \
-	  echo "== $$r: development repository on $$(git -C "$(MODULES_DIR)/$$r" branch --show-current) (no release infrastructure)"; \
-	done
 
 fetch:
 	$(call git_foreach,fetch)
 
 public-remotes:
-	$(PYTHON) -m tools.workspace_remotes --enable . $(foreach r,$(HTTK_REPOSITORIES),"$(MODULES_DIR)/$(r)")
+	$(PYTHON) -m tools.workspace_remotes . $(foreach r,$(HTTK_REPOSITORIES),"$(MODULES_DIR)/$(r)")
 
-pull: checkout
-	@if git show-ref --verify --quiet refs/heads/main; then \
-	  git switch main; \
-	else \
-	  git fetch origin main; \
-	  git switch --track -c main origin/main; \
-	fi
-	@git pull --ff-only origin main
-	@for spec in $(HTTK_MANAGED_REFS); do \
-	  repo=$${spec%:*}; branch=$$(git -C "$$repo" branch --show-current); \
-	  test -n "$$branch" || { echo "== $$repo: cannot pull a detached HEAD"; exit 1; }; \
-	  git -C "$$repo" fetch origin --tags || exit 1; \
-	  git -C "$$repo" pull --ff-only origin "$$branch" || exit 1; \
-	done
-	@for r in $(HTTK_DEV_REPOSITORIES); do \
-	  git -C "$(MODULES_DIR)/$$r" pull --ff-only || exit 1; \
-	done
-	@git -C "$(MODULES_DIR)/$(HTTK_DOCS_REPOSITORY)" submodule sync --recursive
-	@$(PYTHON) -m tools.workspace_remotes --if-enabled "$(MODULES_DIR)/$(HTTK_DOCS_REPOSITORY)"
+pull:
+	@git pull --ff-only --tags --no-recurse-submodules
+	$(call git_foreach,pull --ff-only --tags --no-recurse-submodules)
+
+update-submodules:
 	@git -C "$(MODULES_DIR)/$(HTTK_DOCS_REPOSITORY)" submodule update --init --recursive
-	@$(PYTHON) -m tools.workspace_remotes --if-enabled "$(MODULES_DIR)/$(HTTK_DOCS_REPOSITORY)"
 
 push:
 	@git push

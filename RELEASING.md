@@ -13,7 +13,9 @@ signing key for the final publication command. The code matrix uses Python
 3.12, 3.13 and 3.14; uv obtains missing interpreters.
 
 1. Commit the intended module changes on `develop`, including the chosen final
-   `project.version`, then run `make pull` in this repository.
+   `project.version`. Run `make checkout-develop` if needed to explicitly select
+   development branches, then `make pull` in this repository. Pull preserves
+   current branches and uses their configured upstreams.
 2. Tag each module to release at its current `develop` HEAD:
 
    ```console
@@ -26,7 +28,9 @@ signing key for the final publication command. The code matrix uses Python
    (or local `main` when no remote-tracking branch exists). Selection follows
    main-branch commit history, not tag dates. An old rc0 away from HEAD does
    not select a module. No versions or dependency floors are changed for you.
-   `make pull` refreshes main and tags before selection; stable final tags are
+   `make pull` fetches tags and the configured remote-tracking refs (normally
+   including `origin/main`) before selection. With a restricted fetch refspec,
+   fetch `origin/main` explicitly if needed. Stable final tags are
    treated as your release records, without querying PyPI publication status.
 
 3. Run:

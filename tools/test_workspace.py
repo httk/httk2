@@ -40,6 +40,8 @@ class WorkspaceTests(unittest.TestCase):
         self.git(
             self.workspace, "remote", "add", "origin", str(self.root / "workspace.git")
         )
+        self.git(self.workspace, "fetch", "origin")
+        self.git(self.workspace, "branch", "--set-upstream-to", "origin/main")
         self.fixture("docs")
 
     def git(self, repo: Path, *args: str) -> str:
@@ -140,7 +142,7 @@ class WorkspaceTests(unittest.TestCase):
         self.git(repo, "remote", "set-url", "origin", str(self.root / "missing.git"))
         result = self.make("checkout", check=False)
         self.assertNotEqual(result.returncode, 0)
-        self.assertNotIn("no develop branch", result.stdout)
+        self.assertNotIn("mod: no develop branch", result.stdout)
         self.assertEqual(self.git(repo, "branch", "--show-current"), "main")
 
     def test_pull_does_not_require_main_in_modules(self) -> None:
@@ -149,6 +151,7 @@ class WorkspaceTests(unittest.TestCase):
         remote = self.remotes / "mod.git"
         self.git(remote, "branch", "-m", "main", "trunk")
         self.git(repo, "branch", "-m", "main", "trunk")
+        self.git(repo, "config", "branch.trunk.merge", "refs/heads/trunk")
         self.make("pull")
         self.assertEqual(self.git(repo, "branch", "--show-current"), "trunk")
 
@@ -156,6 +159,7 @@ class WorkspaceTests(unittest.TestCase):
         """Pull uses the selected branch for mixed release-tooling repositories."""
         main_repo = self.fixture("mod")
         develop_repo = self.fixture("extra", develop=True)
+        self.make("checkout-develop")
         for name, branch in (("mod", "main"), ("extra", "develop")):
             source = self.root / name
             self.git(source, "switch", branch)
@@ -168,6 +172,77 @@ class WorkspaceTests(unittest.TestCase):
         self.assertEqual((develop_repo / "new.txt").read_text(), "develop")
         self.assertEqual(self.git(main_repo, "branch", "--show-current"), "main")
         self.assertEqual(self.git(develop_repo, "branch", "--show-current"), "develop")
+
+    def test_checkout_main_and_develop_are_explicit(self) -> None:
+        """Switch both release and development repositories only on request."""
+        repo = self.fixture("mod", develop=True)
+        extra = self.fixture("extra", develop=True)
+        (extra / "tools/check_release.py").unlink()
+        self.git(extra, "add", "-u")
+        self.git(extra, "commit", "-m", "Development repository")
+        self.git(self.workspace, "branch", "develop")
+        self.make("checkout-develop")
+        for path in (repo, extra, self.workspace):
+            self.assertEqual(self.git(path, "branch", "--show-current"), "develop")
+        self.make("checkout-main")
+        for path in (repo, extra, self.workspace, self.workspace / "modules/docs"):
+            self.assertEqual(self.git(path, "branch", "--show-current"), "main")
+
+    def test_pull_keeps_main_even_when_develop_exists(self) -> None:
+        """Pulling a main workspace never implicitly selects available develop."""
+        repo = self.fixture("mod", develop=True)
+        self.git(self.workspace, "branch", "develop")
+        self.make("pull")
+        self.assertEqual(self.git(repo, "branch", "--show-current"), "main")
+        self.assertEqual(self.git(self.workspace, "branch", "--show-current"), "main")
+
+    def test_pull_respects_custom_upstreams_and_remote_configuration(self) -> None:
+        """Feature branches pull their upstream without sync, probes, or switches."""
+        repo = self.fixture("mod", develop=True)
+        docs = self.workspace / "modules/docs"
+        for path in (repo, self.workspace, docs):
+            self.git(path, "switch", "-c", "feature", "--track", "origin/main")
+        self.git(repo, "remote", "rename", "origin", "upstream")
+        self.git(self.workspace, "config", "httk.publicRemotes", "true")
+        self.git(
+            docs,
+            "-c",
+            "protocol.file.allow=always",
+            "submodule",
+            "add",
+            str(self.remotes / "mod.git"),
+            "nested",
+        )
+        child = docs / "nested"
+        self.git(child, "switch", "-c", "feature")
+        self.git(docs, "config", "submodule.nested.url", "custom-fetch-url")
+        self.git(docs, "config", "submodule.recurse", "true")
+        snapshots = {
+            path: self.git(path, "config", "--local", "--list")
+            for path in (repo, docs, child, self.workspace)
+        }
+        (self.workspace / "tools/workspace_remotes.py").write_text(
+            "raise RuntimeError('Public remote probing must be explicit')\n"
+        )
+        source = self.root / "mod"
+        (source / "new.txt").write_text("upstream main")
+        self.git(source, "add", ".")
+        self.git(source, "commit", "-m", "Advance upstream")
+        self.git(source, "push", str(self.remotes / "mod.git"), "main")
+        self.make("pull")
+        self.assertEqual((repo / "new.txt").read_text(), "upstream main")
+        for path in (repo, self.workspace, docs, child):
+            self.assertEqual(self.git(path, "branch", "--show-current"), "feature")
+        for path, config in snapshots.items():
+            self.assertEqual(self.git(path, "config", "--local", "--list"), config)
+
+    def test_pull_does_not_clone_missing_modules(self) -> None:
+        """Missing repositories require explicit checkout instead of implicit cloning."""
+        repo = self.fixture("mod", clone=False)
+        result = self.make("pull", check=False)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("not checked out", result.stdout)
+        self.assertFalse(repo.exists())
 
 
 if __name__ == "__main__":

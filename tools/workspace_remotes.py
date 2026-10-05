@@ -15,7 +15,8 @@ from pathlib import Path
 _GITHUB_SSH_SCHEME = re.compile(r"^ssh://git@github\.com/(?P<path>.+)$")
 _GITHUB_SSH_SCPC = re.compile(r"^git@github\.com:(?P<path>.+)$")
 _GITHUB_HTTPS = re.compile(r"^https://github\.com/(?P<path>.+)$")
-_Probe = Callable[[str], bool]
+_ProbeResult = bool | tuple[bool, str]
+_Probe = Callable[[str], _ProbeResult]
 
 
 def _github_path(url: str) -> str | None:
@@ -64,12 +65,19 @@ def _isolated_probe_environment(home: str) -> dict[str, str]:
     return environment
 
 
-def probe_public(url: str, timeout: float = 15.0) -> bool:
-    """Check that ``url`` is readable without credentials.
+def _redact_probe_error(error: str) -> str:
+    """Remove credentials from a Git probe diagnostic."""
+
+    one_line = " ".join(error.split())
+    return re.sub(r"(https?://)[^/@\s]+@", r"\1<redacted>@", one_line)
+
+
+def _probe_public(url: str, timeout: float = 15.0) -> tuple[bool, str]:
+    """Check a URL and return a safe diagnostic when it is not public.
 
     :param url: Candidate public repository URL.
     :param timeout: Maximum probe duration in seconds.
-    :return: Whether anonymous ``git ls-remote`` succeeded.
+    :return: A success flag and a safe failure diagnostic.
     """
 
     with tempfile.TemporaryDirectory(prefix="httk-public-remotes-") as directory:
@@ -92,13 +100,30 @@ def probe_public(url: str, timeout: float = 15.0) -> bool:
                 env=environment,
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+                text=True,
                 timeout=timeout,
                 check=False,
             )
-        except (OSError, subprocess.TimeoutExpired):
-            return False
-    return result.returncode == 0
+        except OSError as error:
+            return False, f"could not run git: {error.strerror or error}"
+        except subprocess.TimeoutExpired:
+            return False, f"timed out after {timeout:g}s"
+    if result.returncode == 0:
+        return True, ""
+    diagnostic = _redact_probe_error(result.stderr or "")
+    return False, diagnostic or f"git ls-remote exited with status {result.returncode}"
+
+
+def probe_public(url: str, timeout: float = 15.0) -> bool:
+    """Check that ``url`` is readable without credentials.
+
+    :param url: Candidate public repository URL.
+    :param timeout: Maximum probe duration in seconds.
+    :return: Whether anonymous ``git ls-remote`` succeeded.
+    """
+
+    return _probe_public(url, timeout)[0]
 
 
 def _git(
@@ -198,14 +223,21 @@ def _is_git_repository(path: Path) -> bool:
 class _Configurator:
     """Apply remote configuration while caching public probes."""
 
-    def __init__(self, probe: _Probe = probe_public) -> None:
+    def __init__(self, probe: _Probe = _probe_public) -> None:
         self.probe = probe
-        self.probes: dict[str, bool] = {}
+        self.probes: dict[str, tuple[bool, str]] = {}
+
+    def _probe_result(self, url: str) -> tuple[bool, str]:
+        if url not in self.probes:
+            result = self.probe(url)
+            self.probes[url] = result if isinstance(result, tuple) else (result, "")
+        return self.probes[url]
 
     def _is_public(self, url: str) -> bool:
-        if url not in self.probes:
-            self.probes[url] = self.probe(url)
-        return self.probes[url]
+        return self._probe_result(url)[0]
+
+    def _probe_failure(self, url: str) -> str:
+        return self._probe_result(url)[1]
 
     def _configure_remote(self, repository: Path, source_url: str) -> None:
         fetch_url = github_https(source_url)
@@ -213,7 +245,9 @@ class _Configurator:
             print(f"== {repository}: unsupported remote; skipped")
             return
         if not self._is_public(fetch_url):
-            print(f"== {repository}: public probe failed; skipped")
+            reason = self._probe_failure(fetch_url)
+            suffix = f" ({reason})" if reason else ""
+            print(f"== {repository}: public probe failed{suffix}; skipped")
             return
 
         _set_origin_fetch(repository, fetch_url)
@@ -254,24 +288,19 @@ class _Configurator:
             if fetch_url is None:
                 print(f"== {child}: unsupported registered URL; skipped")
             elif not self._is_public(fetch_url):
-                print(f"== {child}: public probe failed; skipped")
+                reason = self._probe_failure(fetch_url)
+                suffix = f" ({reason})" if reason else ""
+                print(f"== {child}: public probe failed{suffix}; skipped")
             else:
                 _set_submodule_url(repository, key, fetch_url)
             if _is_git_repository(child):
                 self.configure_tree(child, registered_url)
 
 
-def _enabled(repository: Path) -> bool:
-    result = _git(
-        ["config", "--local", "--type=bool", "--get", "httk.publicRemotes"], repository
-    )
-    return result.returncode == 0 and result.stdout.strip().lower() == "true"
-
-
 def configure_repository(
     path: str | os.PathLike[str],
     *,
-    probe: _Probe = probe_public,
+    probe: _Probe = _probe_public,
 ) -> None:
     """Configure a repository and its registered submodules.
 
@@ -287,24 +316,9 @@ def configure_repository(
 
 def _configure_targets(
     paths: Iterable[str],
-    *,
-    enable: bool,
-    if_enabled: bool,
 ) -> None:
-    """Configure targets using the opt-in stored by the invoking repository."""
+    """Configure the explicitly supplied repositories once."""
 
-    invoking_repository = _repository_root(Path.cwd())
-    if invoking_repository is None:
-        return
-    if enable:
-        _git(
-            ["config", "--local", "--bool", "httk.publicRemotes", "true"],
-            invoking_repository,
-            check=True,
-        )
-    elif if_enabled and not _enabled(invoking_repository):
-        print(f"== {invoking_repository}: public remotes disabled; skipped")
-        return
     configurator = _Configurator()
     for path in paths:
         repository = _repository_root(Path(path).resolve())
@@ -316,21 +330,9 @@ def main(arguments: list[str] | None = None) -> int:
     """Run the workspace remote helper command line interface."""
 
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--if-enabled",
-        action="store_true",
-        help="skip all targets unless the invoking repository opted in",
-    )
-    parser.add_argument(
-        "--enable",
-        action="store_true",
-        help="enable public remotes in the invoking repository",
-    )
     parser.add_argument("repo", nargs="+", help="repository directories")
     options = parser.parse_args(arguments)
-    _configure_targets(
-        options.repo, enable=options.enable, if_enabled=options.if_enabled
-    )
+    _configure_targets(options.repo)
     return 0
 
 
