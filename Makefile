@@ -43,7 +43,7 @@ define git_foreach
 endef
 
 .PHONY: clean dist-clean dist dist-check release-check release-prepare checkout checkout-develop checkout-main update-submodules fetch pull push \
-	install public-remotes ci release-check-all release-docs-build release-aggregate-docs-build release-merge-tag-and-push-main
+	install ssh-push-remotes ci release-check-all release-docs-build release-aggregate-docs-build release-merge-tag-and-push-main
 
 checkout: checkout-develop
 
@@ -79,7 +79,7 @@ checkout-develop checkout-main:
 fetch:
 	$(call git_foreach,fetch)
 
-public-remotes:
+ssh-push-remotes:
 	$(PYTHON) -m tools.workspace_remotes . $(foreach r,$(HTTK_REPOSITORIES),"$(MODULES_DIR)/$(r)")
 
 pull:

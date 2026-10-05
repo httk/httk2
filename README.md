@@ -57,7 +57,7 @@ on all *httk₂* modules and the aggregate documentation site at once:
 make checkout          # initial setup; alias for checkout-develop
 make checkout-develop  # clone missing repositories; select develop where available
 make checkout-main     # clone missing repositories; select main where available
-make public-remotes    # configure verified public HTTPS fetch URLs and SSH pushes
+make ssh-push-remotes  # configure SSH pushes while retaining public HTTPS fetches
 make fetch             # git fetch in every managed repository
 make pull              # fast-forward current branches from their configured upstreams
 make update-submodules # update the documentation site's pinned submodule checkouts
@@ -69,7 +69,7 @@ make install           # editable-install the workspace with all declared extras
 modules and the documentation repository over public HTTPS from
 `https://github.com/httk/...`, so the bundled repositories need no GitHub
 authentication to clone or pull. New clones initially use HTTPS for both fetch
-and push. Contributors can run `make public-remotes` to configure SSH pushes
+and push. Contributors can run `make ssh-push-remotes` to configure SSH pushes
 while retaining public HTTPS fetches. `HTTK_GIT_BASE` can override the clone base.
 They select the requested branch in this repository and every checkout under
 `modules/` when that branch exists locally or on `origin`. Repositories without
@@ -90,7 +90,7 @@ configure one explicitly. `fetch`, `pull` (after the metapackage pull succeeds),
 and `push` continue through individual module failures and exit non-zero if any
 repository failed.
 
-`public-remotes` is an explicit, one-time configuration command for this checkout,
+`ssh-push-remotes` is an explicit, one-time configuration command for this checkout,
 the repositories under `modules/`, and their registered Git submodules. It checks
 GitHub HTTPS access without credentials before setting an `origin` fetch URL
 and an SSH push URL in local Git configuration. Private, unreachable, and
@@ -104,7 +104,7 @@ those descendants. The former `httk.publicRemotes` setting is no longer used.
 `update-submodules` separately updates the documentation site's submodules to its
 committed revisions using existing URL configuration. If registered URLs change,
 run `git -C modules/httk.github.io submodule sync --recursive` explicitly, followed
-by `make public-remotes` if public HTTPS fetches are desired.
+by `make ssh-push-remotes` to restore public HTTPS fetches and SSH pushes.
 
 `install` refuses to run without an activated virtual environment. It installs
 every declared extra from every checkout with a `pyproject.toml`, the aggregate
