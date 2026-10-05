@@ -6,8 +6,8 @@ DIST_DIR ?= dist
 # and are listed in dependency order. Any other repository found there is
 # picked up automatically: one carrying the httk-module-template release
 # infrastructure (tools/check_release.py) is a release module, released from
-# develop by the coordinated targets; anything else is a development repository
-# that only pull, fetch, and push touch, on its current branch.
+# develop by the coordinated targets when that branch exists. Other repositories
+# keep their current branch during pull, fetch, and push.
 MODULES_DIR ?= modules
 HTTK_GIT_BASE ?= git@github.com:httk
 HTTK_DEFAULT_MODULES ?= httk-core httk-store httk-atomistic httk-analyse httk-serve httk-workflow
@@ -32,7 +32,7 @@ RELEASE_BATCH = $(PYTHON) -m tools.release --state "$(RELEASE_STATE)"
 # fail at the end if anything failed.
 define git_foreach
 	@fail=0; for r in $(HTTK_REPOSITORIES); do \
-	  if [ -d "$(MODULES_DIR)/$$r/.git" ]; then \
+	  if [ -e "$(MODULES_DIR)/$$r/.git" ]; then \
 	    echo "== $$r ($$(git -C "$(MODULES_DIR)/$$r" branch --show-current))"; \
 	    git -C "$(MODULES_DIR)/$$r" $(1) || fail=1; \
 	  else \
@@ -42,23 +42,31 @@ define git_foreach
 endef
 
 .PHONY: clean dist-clean dist dist-check release-check release-prepare checkout fetch pull push \
-	install ci release-check-all release-docs-build release-aggregate-docs-build release-merge-tag-and-push-main
+	install public-remotes ci release-check-all release-docs-build release-aggregate-docs-build release-merge-tag-and-push-main
 
 checkout:
 	@mkdir -p $(MODULES_DIR)
 	@for spec in $(HTTK_MANAGED_REFS); do \
 	  repo=$${spec%:*}; branch=$${spec#*:}; name=$$(basename "$$repo"); \
-	  if [ -d "$$repo/.git" ]; then \
+	  if [ ! -e "$$repo/.git" ]; then \
+	    echo "== $$name: cloning"; \
+	    git clone "$(HTTK_GIT_BASE)/$$name.git" "$$repo" || exit 1; \
+	  fi; \
+	  if git -C "$$repo" show-ref --verify --quiet "refs/heads/$$branch"; then \
 	    echo "== $$name: switching to $$branch"; \
-	    if git -C "$$repo" show-ref --verify --quiet "refs/heads/$$branch"; then \
-	      git -C "$$repo" switch "$$branch" || exit 1; \
-	    else \
-	      git -C "$$repo" fetch origin "$$branch" || exit 1; \
-	      git -C "$$repo" switch --track -c "$$branch" "origin/$$branch" || exit 1; \
-	    fi; \
+	    git -C "$$repo" switch "$$branch" || exit 1; \
 	  else \
-	    echo "== $$name: cloning $$branch"; \
-	    git clone --branch "$$branch" "$(HTTK_GIT_BASE)/$$name.git" "$$repo" || exit 1; \
+	    git -C "$$repo" ls-remote --exit-code --heads origin "refs/heads/$$branch" >/dev/null; result=$$?; \
+	    if [ "$$result" -eq 2 ] && [ "$$branch" = develop ]; then \
+	      echo "== $$name: no develop branch; keeping $$(git -C "$$repo" branch --show-current)"; \
+	      continue; \
+	    fi; \
+	    [ "$$result" -eq 0 ] || exit 1; \
+	    echo "== $$name: switching to $$branch"; \
+	    git -C "$$repo" fetch origin "refs/heads/$$branch:refs/remotes/origin/$$branch" || exit 1; \
+	    git -C "$$repo" switch --no-track -c "$$branch" "origin/$$branch" || exit 1; \
+	    git -C "$$repo" config "branch.$$branch.remote" origin || exit 1; \
+	    git -C "$$repo" config "branch.$$branch.merge" "refs/heads/$$branch" || exit 1; \
 	  fi; \
 	done
 	@for r in $(HTTK_DEV_REPOSITORIES); do \
@@ -67,6 +75,9 @@ checkout:
 
 fetch:
 	$(call git_foreach,fetch)
+
+public-remotes:
+	$(PYTHON) -m tools.workspace_remotes --enable . $(foreach r,$(HTTK_REPOSITORIES),"$(MODULES_DIR)/$(r)")
 
 pull: checkout
 	@if git show-ref --verify --quiet refs/heads/main; then \
@@ -77,15 +88,18 @@ pull: checkout
 	fi
 	@git pull --ff-only origin main
 	@for spec in $(HTTK_MANAGED_REFS); do \
-	  repo=$${spec%:*}; branch=$${spec#*:}; \
-	  git -C "$$repo" fetch origin main --tags || exit 1; \
+	  repo=$${spec%:*}; branch=$$(git -C "$$repo" branch --show-current); \
+	  test -n "$$branch" || { echo "== $$repo: cannot pull a detached HEAD"; exit 1; }; \
+	  git -C "$$repo" fetch origin --tags || exit 1; \
 	  git -C "$$repo" pull --ff-only origin "$$branch" || exit 1; \
 	done
 	@for r in $(HTTK_DEV_REPOSITORIES); do \
 	  git -C "$(MODULES_DIR)/$$r" pull --ff-only || exit 1; \
 	done
 	@git -C "$(MODULES_DIR)/$(HTTK_DOCS_REPOSITORY)" submodule sync --recursive
+	@$(PYTHON) -m tools.workspace_remotes --if-enabled "$(MODULES_DIR)/$(HTTK_DOCS_REPOSITORY)"
 	@git -C "$(MODULES_DIR)/$(HTTK_DOCS_REPOSITORY)" submodule update --init --recursive
+	@$(PYTHON) -m tools.workspace_remotes --if-enabled "$(MODULES_DIR)/$(HTTK_DOCS_REPOSITORY)"
 
 push:
 	@git push
