@@ -9,7 +9,7 @@ DIST_DIR ?= dist
 # develop by the coordinated targets when that branch exists. Branch selection
 # is explicit; pull, fetch, and push use the current branches and remote settings.
 MODULES_DIR ?= modules
-HTTK_GIT_BASE ?= git@github.com:httk
+HTTK_GIT_BASE ?= https://github.com/httk
 HTTK_DEFAULT_MODULES ?= httk-core httk-store httk-atomistic httk-analyse httk-serve httk-workflow
 HTTK_DOCS_REPOSITORY ?= httk.github.io
 HTTK_CHECKED_OUT := $(notdir $(patsubst %/.git,%,$(wildcard $(MODULES_DIR)/*/.git)))

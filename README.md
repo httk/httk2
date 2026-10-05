@@ -66,7 +66,11 @@ make install           # editable-install the workspace with all declared extras
 ```
 
 `checkout` is an alias for `checkout-develop`. The checkout targets clone missing
-modules and the documentation repository over SSH from `git@github.com:httk/...`.
+modules and the documentation repository over public HTTPS from
+`https://github.com/httk/...`, so the bundled repositories need no GitHub
+authentication to clone or pull. New clones initially use HTTPS for both fetch
+and push. Contributors can run `make public-remotes` to configure SSH pushes
+while retaining public HTTPS fetches. `HTTK_GIT_BASE` can override the clone base.
 They select the requested branch in this repository and every checkout under
 `modules/` when that branch exists locally or on `origin`. Repositories without
 that branch keep their current branch; a new clone starts on the remote's default.
@@ -88,8 +92,8 @@ repository failed.
 
 `public-remotes` is an explicit, one-time configuration command for this checkout,
 the repositories under `modules/`, and their registered Git submodules. It checks
-GitHub HTTPS access without credentials before setting an `origin` fetch URL,
-keeping an SSH push URL in local Git configuration. Private, unreachable, and
+GitHub HTTPS access without credentials before setting an `origin` fetch URL
+and an SSH push URL in local Git configuration. Private, unreachable, and
 unsupported URLs are skipped. Registered submodule SSH URLs supply their push
 destinations; existing custom push destinations are preserved. No committed
 `.gitmodules` files are changed. Run the helper again after adding repositories or
