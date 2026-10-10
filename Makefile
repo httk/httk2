@@ -24,7 +24,8 @@ HTTK_CHECKOUT_REFS = .:$(HTTK_CHECKOUT_BRANCH) $(foreach r,$(HTTK_REPOSITORIES),
 GIT_USER_NAME ?= Rickard Armiento
 GIT_USER_EMAIL ?= rickard-gpg@armiento.net
 READ_PROJECT_VERSION = $(PYTHON) -c 'import sys, tomllib; print(tomllib.load(sys.stdin.buffer)["project"]["version"])'
-READ_PROJECT_EXTRAS = $(PYTHON) -c 'import sys, tomllib; print(",".join(tomllib.load(sys.stdin.buffer)["project"].get("optional-dependencies", ())))'
+# Print those of the extras named as arguments that a pyproject.toml on stdin declares.
+READ_PROJECT_EXTRAS = $(PYTHON) -c 'import sys, tomllib; declared = tomllib.load(sys.stdin.buffer)["project"].get("optional-dependencies", {}); print(",".join(e for e in sys.argv[1:] if e in declared))'
 RELEASE_STATE ?= .release-batch.json
 DOCS_BASE_URL ?= https://docs.httk.org
 RELEASE_BATCH = $(PYTHON) -m tools.release --state "$(RELEASE_STATE)"
@@ -43,7 +44,7 @@ define git_foreach
 endef
 
 .PHONY: clean dist-clean dist dist-check release-check release-prepare checkout checkout-develop checkout-main update-submodules fetch pull push \
-	install ssh-push-remotes ci release-check-all release-docs-build release-aggregate-docs-build release-merge-tag-and-push-main
+	install install_minimal install_develop install_full ssh-push-remotes ci release-check-all release-docs-build release-aggregate-docs-build release-merge-tag-and-push-main
 
 checkout: checkout-develop
 
@@ -93,15 +94,30 @@ push:
 	@git push
 	$(call git_foreach,push)
 
-install:
+# Editable installs of the release modules, the documentation site and this
+# metapackage (not the other development repositories, which are not httk
+# distributions), each with those of the selected extras it declares: install
+# takes the runtime [default] extras, install_develop adds the [dev] tooling,
+# and install_full adds the [ci] integrations plus [docs] and [release], so the
+# shared environment can run every module's "make ci", documentation builds and
+# release checks. install_minimal takes no extras and skips the metapackage,
+# whose own requirements name the [default] extras.
+HTTK_INSTALL_EXTRAS = default
+HTTK_INSTALL_METAPACKAGE = .
+install_minimal: HTTK_INSTALL_EXTRAS =
+install_minimal: HTTK_INSTALL_METAPACKAGE =
+install_develop: HTTK_INSTALL_EXTRAS = default dev
+install_full: HTTK_INSTALL_EXTRAS = default dev ci docs release
+
+install install_minimal install_develop install_full:
 	@test -n "$$VIRTUAL_ENV" || { \
 	  echo "error: no activated virtual environment (VIRTUAL_ENV is unset)"; exit 1; }
 	@set -eu; set --; \
-	for repo in $(foreach r,$(HTTK_REPOSITORIES),$(MODULES_DIR)/$(r)) .; do \
+	for repo in $(foreach r,$(HTTK_MODULES) $(HTTK_DOCS_REPOSITORY),$(MODULES_DIR)/$(r)) $(HTTK_INSTALL_METAPACKAGE); do \
 	  test -e "$$repo/.git" || { \
 	    echo "== $$repo: not checked out (run 'make checkout')"; exit 1; }; \
 	  test -f "$$repo/pyproject.toml" || { echo "== $$repo: no pyproject.toml; skipped"; continue; }; \
-	  extras="$$($(READ_PROJECT_EXTRAS) < "$$repo/pyproject.toml")"; \
+	  extras="$$($(READ_PROJECT_EXTRAS) $(HTTK_INSTALL_EXTRAS) < "$$repo/pyproject.toml")"; \
 	  requirement="$$repo"; \
 	  test -z "$$extras" || requirement="$$repo[$$extras]"; \
 	  echo "== installing $$repo (editable, extras: $${extras:-none})"; \

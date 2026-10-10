@@ -62,7 +62,10 @@ make fetch             # git fetch in every managed repository
 make pull              # fast-forward current branches from their configured upstreams
 make update-submodules # update the documentation site's pinned submodule checkouts
 make push              # git push in every repository, including this one
-make install           # editable-install the workspace with all declared extras
+make install_minimal   # editable-install the httk modules without any extras
+make install           # editable-install the workspace with the [default] extras
+make install_develop   # ... adding the [dev] tooling extras
+make install_full      # ... adding the [ci], [docs] and [release] extras
 ```
 
 `checkout` is an alias for `checkout-develop`. The checkout targets clone missing
@@ -76,6 +79,20 @@ They select the requested branch in this repository and every checkout under
 that branch keep their current branch; a new clone starts on the remote's default.
 The documentation repository, `httk.github.io`, selects `main` in both modes.
 Remote lookup errors fail the command rather than being treated as absent branches.
+
+The install targets require an activated virtual environment and install the
+release modules, the documentation site and this metapackage editable, each with
+those of the selected extras it declares; other development repositories (such
+as the site starter and workflow-package collections) are not installed.
+`install_minimal` leaves out the metapackage, because its requirements name the
+modules' `[default]` extras. Modules split their development dependencies: `dev` holds the tooling
+(pytest, ruff, pydoclint, pyright, mypy), while `ci` holds the optional
+integrations that only the full `make ci` gate exercises (for example ase,
+pymatgen, jobflow/atomate2, the DuckDB/ClickHouse drivers, and the DSP schema
+validators). With `install_develop`, module tests run and skip those
+integrations; `install_full` is what every module's `make ci`, documentation
+builds and release checks need. Installing a smaller level into an existing
+environment does not remove packages.
 
 Every repository found under `modules/` is managed. One carrying the module
 template's release infrastructure (`tools/check_release.py`) is included in

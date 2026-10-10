@@ -296,6 +296,21 @@ class ReleaseBatchTests(unittest.TestCase):
         self.assertFalse(any("docs" in command for command in rendered))
         self.assertEqual(release_batch.load_state(state_path)["status"], "code-passed")
 
+    def test_code_gate_installs_declared_dev_ci_and_default_extras(self) -> None:
+        """The code gate requests dev, ci and default where declared, never docs or release."""
+        repo = self.repo()
+        (repo / "pyproject.toml").write_text(
+            "[project]\nname = 'mod'\nversion = '1.0.0'\n"
+            "[project.optional-dependencies]\n"
+            "default = []\ndev = []\nci = []\ndocs = []\nrelease = []\n"
+        )
+        self.assertEqual(release_batch._extras(repo), "dev,ci,default")
+        (repo / "pyproject.toml").write_text(
+            "[project]\nname = 'mod'\nversion = '1.0.0'\n"
+            "[project.optional-dependencies]\ndev = []\n"
+        )
+        self.assertEqual(release_batch._extras(repo), "dev")
+
     def test_gate_failure_stops_before_later_commands(self) -> None:
         """The first failed isolated command is fail-fast evidence."""
         repo = self.repo()

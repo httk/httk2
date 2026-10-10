@@ -454,11 +454,11 @@ def _record(selection: Selection, code_fingerprint: str) -> dict[str, object]:
 
 
 def _extras(source: Path) -> str:
-    """Return the requested development/default extras declared by a source."""
+    """Return the requested development/CI/default extras declared by a source."""
     extras = tomllib.loads((source / "pyproject.toml").read_text())["project"].get(
         "optional-dependencies", {}
     )
-    return ",".join(item for item in ("dev", "default") if item in extras)
+    return ",".join(item for item in ("dev", "ci", "default") if item in extras)
 
 
 def _constraint_lines(selections: list[Selection]) -> str:
