@@ -80,8 +80,9 @@ that branch keep their current branch; a new clone starts on the remote's defaul
 The documentation repository, `httk.github.io`, selects `main` in both modes.
 Remote lookup errors fail the command rather than being treated as absent branches.
 
-The install targets require an activated virtual environment and install the
-release modules, the documentation site and this metapackage editable, each with
+The install targets require an activated virtual environment or a non-base conda
+environment and install the release modules, the documentation site and this
+metapackage editable, each with
 those of the selected extras it declares; other development repositories (such
 as the site starter and workflow-package collections) are not installed.
 `install_minimal` leaves out the metapackage, because its requirements name the
@@ -123,8 +124,8 @@ committed revisions using existing URL configuration. If registered URLs change,
 run `git -C modules/httk.github.io submodule sync --recursive` explicitly, followed
 by `make ssh-push-remotes` to restore public HTTPS fetches and SSH pushes.
 
-`install` refuses to run without an activated virtual environment. It installs
-every declared extra from every checkout with a `pyproject.toml`, the aggregate
+`install` refuses to run without an activated virtual environment or a non-base
+conda environment. It installs every declared extra from every checkout with a `pyproject.toml`, the aggregate
 documentation checkout, and this metapackage in one resolution. This supplies the Python
 dependencies used by release preparation and the broadest local test coverage.
 Tests that exercise external database servers or browser runtimes still require

@@ -110,8 +110,7 @@ install_develop: HTTK_INSTALL_EXTRAS = default dev
 install_full: HTTK_INSTALL_EXTRAS = default dev ci docs release
 
 install install_minimal install_develop install_full:
-	@test -n "$$VIRTUAL_ENV" || { \
-	  echo "error: no activated virtual environment (VIRTUAL_ENV is unset)"; exit 1; }
+	@$(PYTHON) tools/check_install_environment.py
 	@set -eu; set --; \
 	for repo in $(foreach r,$(HTTK_MODULES) $(HTTK_DOCS_REPOSITORY),$(MODULES_DIR)/$(r)) $(HTTK_INSTALL_METAPACKAGE); do \
 	  test -e "$$repo/.git" || { \
