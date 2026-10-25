@@ -66,6 +66,8 @@ make install_minimal   # editable-install the httk modules without any extras
 make install           # editable-install the workspace with the [default] extras
 make install_develop   # ... adding the [dev] tooling extras
 make install_full      # ... adding the [ci], [docs] and [release] extras
+make install_vasp      # clone httk-workflow-vasp if missing, then make install
+make install_codes     # ... the same for all simulation-code support
 ```
 
 `checkout` is an alias for `checkout-develop`. The checkout targets clone missing
@@ -94,6 +96,26 @@ validators). With `install_develop`, module tests run and skip those
 integrations; `install_full` is what every module's `make ci`, documentation
 builds and release checks need. Installing a smaller level into an existing
 environment does not remove packages.
+
+Simulation-code support (`httk-workflow-<code>`) is not cloned by `checkout`.
+`install_<code>` (`install_abinit`, `install_cp2k`, `install_gromacs`,
+`install_lammps`, `install_orca`, `install_qe` or `install_vasp`) clones that
+repository into `modules/` when it is missing, selecting the branch the
+`httk-workflow` checkout is on where it exists, and then runs `install`.
+`install_codes` does the same for all of them. Existing checkouts keep their
+current branch. Because `install` and the other workspace targets cover every
+release module under `modules/`, code support added once is afterwards installed
+by `install`, `install_develop` and `install_full` and is updated by `pull`. For
+example, a development workspace with VASP support is set up by:
+
+```console
+make checkout
+make install_vasp
+make install_develop
+```
+
+Run these as separate commands: `make` determines the managed repositories when
+it starts, so a later target in the same invocation does not see a new clone.
 
 Every repository found under `modules/` is managed. One carrying the module
 template's release infrastructure (`tools/check_release.py`) is included in
