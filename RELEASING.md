@@ -12,9 +12,10 @@ network access for Python tools/packages and published inventories, and a Git
 signing key for the final publication command. The code matrix uses Python
 3.12, 3.13 and 3.14; uv obtains missing interpreters.
 
-1. Commit the intended module changes on `develop`, including the chosen final
-   `project.version`. Run `make checkout-develop` if needed to explicitly select
-   development branches, then `make pull` in this repository. Pull preserves
+1. Commit the intended module changes on `develop` (or `main` in main-only
+   repositories), including the chosen final `project.version`. Run
+   `make checkout-develop` if needed to explicitly select development
+   branches, then `make pull` in this repository. Pull preserves
    current branches and uses their configured upstreams.
 2. Tag each module to release at its current `develop` HEAD:
 
@@ -22,12 +23,27 @@ signing key for the final publication command. The code matrix uses Python
    git -C modules/httk-core tag v2.3.4-rc0
    ```
 
+   A repository's development branch is `develop` when a local or
+   `origin/develop` branch exists, otherwise `main`. Main-only repositories
+   (the `httk-workflow-<code>` repositories) are developed directly on `main`;
+   tag them at their checked-out, clean `main` HEAD instead. Every checked-out
+   `httk-workflow-<code>` repository is in the default `HTTK_MODULES`. One
+   that has neither such an rc0 nor a stable release fails selection (all
+   such repositories are listed together); tag it or exclude it, for example:
+
+   ```console
+   make release-check-all HTTK_MODULES="httk-core httk-store httk-atomistic httk-analyse httk-serve httk-workflow"
+   ```
+
+   Later stages use the batch recorded by this check.
+
    The tag is a local selection marker. The corresponding `pyproject.toml`
    must declare `version = "2.3.4"`, **not** a prerelease version.
    Unselected modules use the latest stable-tagged commit on `origin/main`
    (or local `main` when no remote-tracking branch exists). Selection follows
    main-branch commit history, not tag dates. An old rc0 away from HEAD does
-   not select a module. No versions or dependency floors are changed for you.
+   not select a module, but an unfinalised rc0 at a checked-out HEAD other
+   than the development-branch HEAD is an error. No versions or dependency floors are changed for you.
    `make pull` fetches tags and the configured remote-tracking refs (normally
    including `origin/main`) before selection. With a restricted fetch refspec,
    fetch `origin/main` explicitly if needed. Stable final tags are
@@ -91,7 +107,8 @@ workflows, or dependency metadata require a fresh rc0 and code check.
 The aggregate site needs the final module commit hashes. Therefore finish in
 this order:
 
-1. Review, commit and push the generated module documentation on `develop`.
+1. Review, commit and push the generated module documentation on `develop`
+   (on `main` for main-only repositories).
    Leave the rc0 markers at the original code-tested commits.
 2. Run `make release-aggregate-docs-build`. This separate stage prepares and
    strictly checks the aggregate site against the final module commits, then
@@ -123,15 +140,19 @@ make release-merge-tag-and-push-main
 The helper preflights the complete batch before publishing any member. It
 requires unchanged code and docs, clean working trees, pushed candidate
 branches, consistent aggregate gitlinks, and a fast-forward from each
-module's `main` to its verified `develop` commit. Divergent branches stop
+module's `main` to its verified `develop` commit (or, in main-only
+repositories, `main` already at the verified commit). Divergent branches stop
 the command; resolve them manually and revalidate if their content changes.
 
 For candidate modules only, it advances local `main` without switching the
 working branch, creates the signed final `vX.Y.Z` tag, and atomically pushes
-`main` plus the tag to `origin`. It does not publish GitHub releases or
-upload packages. Unselected modules, the metapackage and the aggregate site's
-release tags are left alone. Those repositories can be released separately
-when desired; aggregate preparation does not choose a new site version.
+`main` plus the tag to `origin`. A main-only candidate must have `main`
+checked out and equal to `origin/main`; its `main` is neither moved nor
+pushed, and only the signed tag at HEAD is pushed. The helper does not
+publish GitHub releases or upload packages. Unselected modules, the
+metapackage and the aggregate site's release tags are left alone. Those
+repositories can be released separately when desired; aggregate preparation
+does not choose a new site version.
 
 The documentation and publication commands print release groups, for example:
 

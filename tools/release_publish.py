@@ -1,4 +1,8 @@
-"""Safely fast-forward verified release candidates and publish their tags."""
+"""Safely fast-forward verified release candidates and publish their tags.
+
+Candidates developed on ``develop`` fast-forward ``main``; main-only candidates
+(no local ``develop`` branch) are already on ``main`` and only receive the tag.
+"""
 
 import re
 import subprocess
@@ -9,6 +13,7 @@ from pathlib import Path
 
 from tools.release_batch import (
     Selection,
+    development_branch,
     fingerprint,
     git,
     load_state,
@@ -29,6 +34,7 @@ class PublicationPlan:
     head: str
     remote_main: str
     remote_tag: str | None
+    branch: str
 
 
 _REQUIREMENT_NAME = re.compile(r"\s*([A-Za-z0-9][A-Za-z0-9._-]*)")
@@ -262,7 +268,7 @@ def _preflight_site(
 
     selected = {
         selection.name: (
-            git(selection.repo, "rev-parse", "develop")
+            git(selection.repo, "rev-parse", development_branch(selection.repo))
             if selection.candidate
             else selection.commit
         )
@@ -289,13 +295,14 @@ def _preflight_candidate(selection: Selection) -> PublicationPlan:
 
     repo = selection.repo
     _clean(repo, selection.name)
-    branch = git(repo, "symbolic-ref", "--quiet", "--short", "HEAD")
-    if branch != "develop":
-        raise PublicationError(f"{selection.name}: develop is not checked out")
+    branch = development_branch(repo)
+    if git(repo, "symbolic-ref", "--quiet", "--short", "HEAD") != branch:
+        raise PublicationError(f"{selection.name}: {branch} is not checked out")
     head = git(repo, "rev-parse", "HEAD")
-    remote_develop = _remote_ref(repo, "refs/heads/develop")
-    if remote_develop != head:
-        raise PublicationError(f"{selection.name}: develop differs from origin/develop")
+    if _remote_ref(repo, f"refs/heads/{branch}") != head:
+        raise PublicationError(
+            f"{selection.name}: {branch} differs from origin/{branch}"
+        )
     remote_main = _remote_ref(repo, "refs/heads/main")
     if remote_main is None:
         raise PublicationError(f"{selection.name}: origin/main is absent")
@@ -304,7 +311,7 @@ def _preflight_candidate(selection: Selection) -> PublicationPlan:
         repo,
         remote_main,
         head,
-        f"{selection.name}: origin/main cannot fast-forward to develop",
+        f"{selection.name}: origin/main cannot fast-forward to {branch}",
     )
     if _local_tag_commit(repo, selection.tag) is None:
         raise PublicationError(f"{selection.name}: missing rc0 tag {selection.tag}")
@@ -312,11 +319,12 @@ def _preflight_candidate(selection: Selection) -> PublicationPlan:
         repo,
         selection.tag,
         head,
-        f"{selection.name}: rc0 tag is not an ancestor of develop",
+        f"{selection.name}: rc0 tag is not an ancestor of {branch}",
     )
 
     remote_tag = _remote_tag_commit(repo, f"v{selection.version}")
     _preflight_final_tags(repo, f"v{selection.version}", head, remote_tag)
+    # Only *another* worktree counts: a main-only candidate has main checked out here.
     if _main_worktree_checked_out(repo):
         raise PublicationError(
             f"{selection.name}: main is checked out in another worktree"
@@ -329,9 +337,9 @@ def _preflight_candidate(selection: Selection) -> PublicationPlan:
             repo,
             local_main,
             head,
-            f"{selection.name}: local main cannot fast-forward to develop",
+            f"{selection.name}: local main cannot fast-forward to {branch}",
         )
-    return PublicationPlan(selection, head, remote_main, remote_tag)
+    return PublicationPlan(selection, head, remote_main, remote_tag, branch)
 
 
 def _publish_one(plan: PublicationPlan, user_name: str, user_email: str) -> None:
@@ -345,10 +353,12 @@ def _publish_one(plan: PublicationPlan, user_name: str, user_email: str) -> None
         print(f"== {selection.name}: {final_tag} already published")
         return
 
-    old_main = _git_optional(
-        repo, "rev-parse", "--verify", "--quiet", "refs/heads/main"
-    )
-    git(repo, "update-ref", "refs/heads/main", head, old_main or _ZERO_OID)
+    main_only = plan.branch == "main"
+    if not main_only:
+        old_main = _git_optional(
+            repo, "rev-parse", "--verify", "--quiet", "refs/heads/main"
+        )
+        git(repo, "update-ref", "refs/heads/main", head, old_main or _ZERO_OID)
     local_tag = _local_tag_commit(repo, final_tag)
     if local_tag is None:
         git(
@@ -365,7 +375,8 @@ def _publish_one(plan: PublicationPlan, user_name: str, user_email: str) -> None
             head,
         )
 
-    refs = ["refs/heads/main:refs/heads/main"]
+    # Main-only candidates were pushed to origin/main by the user (preflight).
+    refs = [] if main_only else ["refs/heads/main:refs/heads/main"]
     if plan.remote_tag is None:
         refs.append(f"refs/tags/{final_tag}:refs/tags/{final_tag}")
     git(repo, "push", "--atomic", "origin", *refs)

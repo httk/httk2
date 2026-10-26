@@ -155,7 +155,8 @@ those services or tools to be started separately.
 
 ## Releasing a batch
 
-Mark the modules to release with local `vX.Y.Z-rc0` tags on `develop`, with
+Mark the modules to release with local `vX.Y.Z-rc0` tags on `develop` (on
+`main` in repositories without `develop`), with
 `project.version` already set to the final `X.Y.Z`. Then run:
 
 ```console

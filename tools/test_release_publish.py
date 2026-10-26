@@ -1,5 +1,7 @@
 """Local-Git regression tests for final batch publication."""
 
+import contextlib
+import io
 import json
 import subprocess
 import tempfile
@@ -8,7 +10,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from tools import release_publish
-from tools.release_batch import Selection, fingerprint, git
+from tools.release_batch import Selection, development_branch, fingerprint, git
 
 
 def _run(*args: str, cwd: Path | None = None) -> str:
@@ -32,9 +34,9 @@ class PublicationFixture(unittest.TestCase):
         self.temporary.cleanup()
 
     def _repository(
-        self, name: str, dependencies: list[str] | None = None
+        self, name: str, dependencies: list[str] | None = None, main_only: bool = False
     ) -> Selection:
-        """Create a main/develop candidate repository and its bare origin."""
+        """Create a main/develop (or main-only) candidate repository and its bare origin."""
 
         remote = self.root / f"{name}.git"
         repo = self.root / name
@@ -59,12 +61,14 @@ class PublicationFixture(unittest.TestCase):
         _run("git", "commit", "-m", "main", cwd=repo)
         _run("git", "remote", "add", "origin", str(remote), cwd=repo)
         _run("git", "push", "-u", "origin", "main", cwd=repo)
-        _run("git", "switch", "-c", "develop", cwd=repo)
+        branch = "main" if main_only else "develop"
+        if not main_only:
+            _run("git", "switch", "-c", "develop", cwd=repo)
         (repo / "code.py").write_text("candidate = True\n")
         _run("git", "commit", "-am", "candidate", cwd=repo)
         commit = _run("git", "rev-parse", "HEAD", cwd=repo)
         _run("git", "tag", "v1.0.0-rc0", cwd=repo)
-        _run("git", "push", "-u", "origin", "develop", cwd=repo)
+        _run("git", "push", "-u", "origin", branch, cwd=repo)
         selection = Selection(name, repo, commit, "1.0.0", True, "v1.0.0-rc0")
         self.modules.append(selection)
         self.module_repos[name] = repo
@@ -96,7 +100,7 @@ class PublicationFixture(unittest.TestCase):
             )
             nested = site / path
             commit = (
-                git(selection.repo, "rev-parse", "develop")
+                git(selection.repo, "rev-parse", development_branch(selection.repo))
                 if selection.candidate
                 else selection.commit
             )
@@ -137,7 +141,11 @@ class PublicationFixture(unittest.TestCase):
                     "repo": str(site),
                     "fingerprint": fingerprint(site),
                     "heads": {
-                        selection.name: git(selection.repo, "rev-parse", "develop")
+                        selection.name: git(
+                            selection.repo,
+                            "rev-parse",
+                            development_branch(selection.repo),
+                        )
                         if selection.candidate
                         else selection.commit
                         for selection in self.modules
@@ -360,6 +368,106 @@ class PublicationFixture(unittest.TestCase):
         pushes = [args for _, args in commands if args[:1] == ("push",)]
         self.assertTrue(pushes)
         self.assertTrue(all("--force" not in args for args in pushes))
+
+    def test_main_only_candidate_publishes_only_the_tag(self) -> None:
+        """A main-only candidate gets its signed tag; origin/main is never pushed."""
+
+        candidate = self._repository("only", main_only=True)
+        state = self._state(self._site())
+        commands: list[tuple[Path, tuple[str, ...]]] = []
+
+        with patch.object(release_publish, "git", self._unsigned_signer(commands)):
+            release_publish.publish(state, "Test User", "test@example.invalid")
+
+        remote_main = release_publish._remote_ref(candidate.repo, "refs/heads/main")
+        self.assertEqual(candidate.commit, remote_main)
+        self.assertEqual(
+            candidate.commit,
+            release_publish._remote_tag_commit(candidate.repo, "v1.0.0"),
+        )
+        pushes = [args for _, args in commands if args[:1] == ("push",)]
+        self.assertEqual(
+            [("push", "--atomic", "origin", "refs/tags/v1.0.0:refs/tags/v1.0.0")],
+            pushes,
+        )
+        self.assertFalse(any(args[:1] == ("update-ref",) for _, args in commands))
+
+        commands.clear()
+        output = io.StringIO()
+        with (
+            patch.object(release_publish, "git", self._unsigned_signer(commands)),
+            contextlib.redirect_stdout(output),
+        ):
+            release_publish.publish(state, "Test User", "test@example.invalid")
+        self.assertIn("only: v1.0.0 already published", output.getvalue())
+        self.assertFalse(any(args[:1] == ("push",) for _, args in commands))
+
+    def test_main_only_docs_commit_after_rc0_is_the_final_tag(self) -> None:
+        """A pushed main-only docs commit is tagged; only that tag is pushed."""
+
+        candidate = self._repository("only", main_only=True)
+        (candidate.repo / "docs").mkdir()
+        (candidate.repo / "docs" / "release.md").write_text("release notes\n")
+        _run("git", "add", "docs", cwd=candidate.repo)
+        _run("git", "commit", "-m", "docs", cwd=candidate.repo)
+        _run("git", "push", cwd=candidate.repo)
+        final = git(candidate.repo, "rev-parse", "HEAD")
+        state = self._state(self._site())
+        commands: list[tuple[Path, tuple[str, ...]]] = []
+
+        with patch.object(release_publish, "git", self._unsigned_signer(commands)):
+            release_publish.publish(state, "Test User", "test@example.invalid")
+
+        self.assertNotEqual(candidate.commit, final)
+        self.assertEqual(
+            final, release_publish._remote_tag_commit(candidate.repo, "v1.0.0")
+        )
+        self.assertEqual(
+            final, release_publish._remote_ref(candidate.repo, "refs/heads/main")
+        )
+        pushes = [args for _, args in commands if args[:1] == ("push",)]
+        self.assertEqual(
+            [("push", "--atomic", "origin", "refs/tags/v1.0.0:refs/tags/v1.0.0")],
+            pushes,
+        )
+
+    def test_main_only_candidate_requires_pushed_main(self) -> None:
+        """An unpushed main-only commit stops preflight before any tag is made."""
+
+        candidate = self._repository("only", main_only=True)
+        (candidate.repo / "README.md").write_text("docs\n")
+        _run("git", "add", "README.md", cwd=candidate.repo)
+        _run("git", "commit", "-m", "docs", cwd=candidate.repo)
+
+        with self.assertRaisesRegex(
+            release_publish.PublicationError, "main differs from origin/main"
+        ):
+            release_publish._preflight_candidate(candidate)
+        self.assertIsNone(release_publish._local_tag_commit(candidate.repo, "v1.0.0"))
+
+    def test_mixed_batch_publishes_develop_and_main_only(self) -> None:
+        """Develop candidates fast-forward main; main-only candidates are only tagged."""
+
+        developed = self._repository("developed")
+        main_only = self._repository("mainonly", main_only=True)
+        state = self._state(self._site())
+        commands: list[tuple[Path, tuple[str, ...]]] = []
+
+        with patch.object(release_publish, "git", self._unsigned_signer(commands)):
+            release_publish.publish(state, "Test User", "test@example.invalid")
+
+        for selection in (developed, main_only):
+            self.assertEqual(
+                selection.commit,
+                release_publish._remote_ref(selection.repo, "refs/heads/main"),
+            )
+            self.assertEqual(
+                selection.commit,
+                release_publish._remote_tag_commit(selection.repo, "v1.0.0"),
+            )
+        pushes = {repo: args for repo, args in commands if args[:1] == ("push",)}
+        self.assertIn("refs/heads/main:refs/heads/main", pushes[developed.repo])
+        self.assertNotIn("refs/heads/main:refs/heads/main", pushes[main_only.repo])
 
     def test_release_groups_use_optional_dependencies_and_reject_cycles(self) -> None:
         """Candidate extras order groups, while cycles stop publication planning."""

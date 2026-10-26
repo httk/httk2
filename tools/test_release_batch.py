@@ -80,6 +80,103 @@ class ReleaseBatchTests(unittest.TestCase):
         self.assertTrue(selection.candidate)
         self.assertEqual(selection.tag, "v1.1.0-rc0")
 
+    def test_selects_clean_rc0_at_main_only_head(self) -> None:
+        """Without a develop branch, an rc0 at clean main HEAD is the candidate."""
+        repo = self.repo(version="1.0.0")
+        commit = _git(repo, "rev-parse", "HEAD")
+        _git(repo, "tag", "v1.0.0-rc0")
+
+        selection = release_batch.select_modules(self.modules, ["mod"])[0]
+
+        self.assertEqual(release_batch.development_branch(repo), "main")
+        self.assertEqual(selection.commit, commit)
+        self.assertTrue(selection.candidate)
+        self.assertEqual(selection.tag, "v1.0.0-rc0")
+        (repo / "untracked.py").write_text("x = 1\n")
+        with self.assertRaisesRegex(ValueError, "clean checkout"):
+            release_batch.select_modules(self.modules, ["mod"])
+
+    def test_main_only_without_rc0_or_stable_release_is_actionable(self) -> None:
+        """Every never-released repository is listed with how to select or exclude it."""
+        self.repo("one")
+        self.repo("two")
+        with self.assertRaises(ValueError) as raised:
+            release_batch.select_modules(self.modules, ["one", "two", "absent"])
+        lines = str(raised.exception).splitlines()
+        self.assertEqual(3, len(lines))
+        for line, name in zip(lines, ("one", "two")):
+            self.assertRegex(
+                line,
+                rf"^{name}: no stable release .*; to release it tag "
+                r"vX\.Y\.Z-rc0 at main HEAD, or exclude it with HTTK_MODULES",
+            )
+        self.assertRegex(lines[2], "^absent: repository is missing")
+
+    def test_stale_local_develop_cannot_hide_rc0_at_checked_out_head(self) -> None:
+        """An rc0 off the development branch is an error, not a stable fallback."""
+        repo = self.repo(version="1.0.0")
+        _git(repo, "tag", "v1.0.0")
+        _git(repo, "branch", "develop")
+        self.write_project(repo, "mod", "1.1.0")
+        self.commit(repo, "candidate")
+        _git(repo, "tag", "v1.1.0-rc0")
+        with self.assertRaisesRegex(
+            ValueError,
+            "mod: v1.1.0-rc0 is at the checked-out HEAD but the development "
+            "branch is develop",
+        ):
+            release_batch.select_modules(self.modules, ["mod"])
+        _git(repo, "tag", "v1.1.0")  # A finalised rc0 at HEAD is history.
+        self.assertIsNone(release_batch._candidate("mod", repo))
+
+    def test_remote_develop_keeps_develop_workflow(self) -> None:
+        """origin/develop without a local branch is not reclassified as main-only."""
+        repo = self.repo()
+        _git(repo, "tag", "v1.0.0")
+        _git(repo, "update-ref", "refs/remotes/origin/develop", "HEAD")
+        self.assertEqual("develop", release_batch.development_branch(repo))
+        self.assertIsNone(release_batch._candidate("mod", repo))
+        self.assertEqual("v1.0.0", release_batch._stable("mod", repo).tag)
+
+    def test_verify_main_only_candidate_requires_main_descent(self) -> None:
+        """Main-only evidence holds while main descends from the rc0 commit."""
+        repo = self.repo()
+        candidate = _git(repo, "rev-parse", "HEAD")
+        _git(repo, "tag", "v1.0.0-rc0")
+        selection = release_batch.Selection(
+            "mod", repo, candidate, "1.0.0", True, "v1.0.0-rc0"
+        )
+        source = self.root / "source"
+        release_batch.snapshot(selection, source)
+        state = {
+            "schema": 1,
+            "status": "code-passed",
+            "work": str(self.root),
+            "selections": [
+                {
+                    "name": "mod",
+                    "repo": str(repo),
+                    "commit": candidate,
+                    "version": "1.0.0",
+                    "candidate": True,
+                    "tag": "v1.0.0-rc0",
+                    "code_fingerprint": release_batch.fingerprint(
+                        source, code_only=True
+                    ),
+                }
+            ],
+        }
+        (repo / "docs").mkdir()
+        (repo / "docs" / "note.rst").write_text("note\n")
+        self.commit(repo, "docs only")
+        self.assertEqual(release_batch.verify_code(state)[0].commit, candidate)
+        _git(repo, "switch", "--orphan", "rewritten")
+        (repo / "other.py").write_text("other = True\n")
+        self.commit(repo, "unrelated history")
+        _git(repo, "branch", "-f", "main", "rewritten")
+        with self.assertRaisesRegex(ValueError, "main no longer descends from"):
+            release_batch.verify_code(state)
+
     def test_falls_back_to_newest_first_parent_origin_main(self) -> None:
         """Stable fallback prefers origin/main and ignores a later local main tag."""
         repo = self.repo(version="1.0.0")

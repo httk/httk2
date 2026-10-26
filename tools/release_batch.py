@@ -80,36 +80,64 @@ def _project_version(repo: Path, commit: str) -> str:
         raise ValueError(f"{repo}: {commit} has no usable project.version") from exc
 
 
+def development_branch(repo: Path) -> str:
+    """Return the branch where *repo* receives development commits.
+
+    :param repo: Module repository.
+    :return: ``develop`` when a local or ``origin`` ``develop`` branch exists,
+        else ``main``.
+    """
+    if _has_ref(repo, "refs/heads/develop") or _has_ref(
+        repo, "refs/remotes/origin/develop"
+    ):
+        return "develop"
+    return "main"
+
+
 def _candidate(name: str, repo: Path) -> Selection | None:
     """Return the active rc0 selection for *repo*, if there is one."""
-    if not _has_ref(repo, "develop"):
-        return None
-    develop = git(repo, "rev-parse", "develop")
+    branch = development_branch(repo)
+    head = git(repo, "rev-parse", branch) if _has_ref(repo, branch) else None
     tags = _tags(repo)
     candidates = sorted(
-        tag for tag, commit in tags.items() if commit == develop and _RC.fullmatch(tag)
+        tag for tag, commit in tags.items() if commit == head and _RC.fullmatch(tag)
     )
     if not candidates:
+        # An active rc0 elsewhere must not silently fall back to a stable release.
+        checked_out = git(repo, "rev-parse", "HEAD")
+        stray = sorted(
+            tag
+            for tag, commit in tags.items()
+            if commit == checked_out
+            and checked_out != head
+            and _RC.fullmatch(tag)
+            and tags.get(tag.removesuffix("-rc0")) != checked_out
+        )
+        if stray:
+            raise ValueError(
+                f"{name}: {stray[0]} is at the checked-out HEAD but the "
+                f"development branch is {branch}"
+            )
         return None
     if len(candidates) != 1:
         raise ValueError(
-            f"{name}: develop has multiple rc0 tags: {', '.join(candidates)}"
+            f"{name}: {branch} has multiple rc0 tags: {', '.join(candidates)}"
         )
     tag = candidates[0]
-    version = _project_version(repo, develop)
+    version = _project_version(repo, head)
     if tag != f"v{version}-rc0":
         raise ValueError(
-            f"{name}: {tag} does not match develop pyproject.toml version {version}"
+            f"{name}: {tag} does not match {branch} pyproject.toml version {version}"
         )
     final = f"v{version}"
     if final in tags:
-        if tags[final] == develop:
+        if tags[final] == head:
             return None  # A finalised rc0 is history, not a new candidate.
         raise ValueError(
-            f"{name}: final tag {final} already exists at {tags[final]}, not develop"
+            f"{name}: final tag {final} already exists at {tags[final]}, not {branch}"
         )
-    if git(repo, "branch", "--show-current") != "develop":
-        raise ValueError(f"{name}: active {tag} requires develop to be checked out")
+    if git(repo, "branch", "--show-current") != branch:
+        raise ValueError(f"{name}: active {tag} requires {branch} to be checked out")
     dirty = git(
         repo,
         "status",
@@ -119,7 +147,7 @@ def _candidate(name: str, repo: Path) -> Selection | None:
     )
     if dirty:
         raise ValueError(f"{name}: active {tag} requires a clean checkout:\n{dirty}")
-    return Selection(name, repo, develop, version, True, tag)
+    return Selection(name, repo, head, version, True, tag)
 
 
 def _stable(name: str, repo: Path) -> Selection:
@@ -148,7 +176,9 @@ def _stable(name: str, repo: Path) -> Selection:
             )
         return Selection(name, repo, commit, version, False, tag)
     raise ValueError(
-        f"{name}: no exact stable vX.Y.Z tag exists on first-parent {main}"
+        f"{name}: no stable release (no exact vX.Y.Z tag on first-parent {main}); "
+        f"to release it tag vX.Y.Z-rc0 at {development_branch(repo)} HEAD, "
+        "or exclude it with HTTK_MODULES=..."
     )
 
 
@@ -158,14 +188,22 @@ def select_modules(modules_dir: Path, names: list[str]) -> list[Selection]:
     :param modules_dir: Directory containing the module repositories.
     :param names: Ordered module directory names.
     :return: Immutable selected module revisions.
-    :raises ValueError: If a repository, tag, branch, or version is unsuitable.
+    :raises ValueError: If a repository, tag, branch, or version is unsuitable;
+        every unselectable repository is listed in one error.
     """
     selections = []
+    errors = []
     for name in names:
         repo = (modules_dir / name).resolve()
         if not repo.is_dir() or not (repo / ".git").exists():
-            raise ValueError(f"{name}: repository is missing at {repo}")
-        selections.append(_candidate(name, repo) or _stable(name, repo))
+            errors.append(f"{name}: repository is missing at {repo}")
+            continue
+        try:
+            selections.append(_candidate(name, repo) or _stable(name, repo))
+        except ValueError as error:
+            errors.append(str(error))
+    if errors:
+        raise ValueError("\n".join(errors))
     if not selections:
         raise ValueError("no release modules were requested")
     if not any(selection.candidate for selection in selections):
@@ -769,11 +807,12 @@ def verify_code(state: dict[str, object]) -> list[Selection]:
         if selection.tag != expected_tag:
             raise ValueError(f"{selection.name}: persisted tag/version mismatch")
         if selection.candidate:
-            if not _has_ref(selection.repo, "develop") or not _is_ancestor(
-                selection.repo, selection.commit, "develop"
+            branch = development_branch(selection.repo)
+            if not _has_ref(selection.repo, branch) or not _is_ancestor(
+                selection.repo, selection.commit, branch
             ):
                 raise ValueError(
-                    f"{selection.name}: develop no longer descends from {selection.tag}"
+                    f"{selection.name}: {branch} no longer descends from {selection.tag}"
                 )
             actual = fingerprint(selection.repo, code_only=True)
         else:
