@@ -128,14 +128,16 @@ install install_minimal install_develop install_full:
 # does not clone it. install_<code> clones httk-workflow-<code> when absent,
 # selecting the branch the httk-workflow checkout is on where it exists, and
 # then runs "make install", which installs every checked-out release module,
-# including code support added earlier. install_codes adds all of them.
-HTTK_CODES ?= abinit cp2k gromacs lammps orca qe vasp
+# including code support added earlier. install_codes adds all of them;
+# install_phonopy also clones vasp, which it depends on.
+HTTK_CODES ?= abinit cp2k gromacs lammps orca phonopy qe vasp
 HTTK_CODE_INSTALL_TARGETS = $(addprefix install_,$(HTTK_CODES))
 HTTK_CODE_BRANCH = $(or $(shell git -C "$(MODULES_DIR)/httk-workflow" branch --show-current 2>/dev/null),develop)
 HTTK_CODE_CHECKOUT_REFS = $(foreach c,$(HTTK_INSTALL_CODES),$(if $(wildcard $(MODULES_DIR)/httk-workflow-$(c)/.git),,\
 	$(MODULES_DIR)/httk-workflow-$(c):$(HTTK_CODE_BRANCH)))
 install_codes: HTTK_INSTALL_CODES = $(HTTK_CODES)
 $(HTTK_CODE_INSTALL_TARGETS): HTTK_INSTALL_CODES = $(@:install_%=%)
+install_phonopy: HTTK_INSTALL_CODES = phonopy vasp
 
 .PHONY: install_codes $(HTTK_CODE_INSTALL_TARGETS)
 install_codes $(HTTK_CODE_INSTALL_TARGETS):

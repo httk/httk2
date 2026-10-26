@@ -39,6 +39,24 @@ classifiers = [
 
 [project.optional-dependencies]
 default = []
+abinit = ["httk-workflow-abinit>=0.1.0,<1"]
+cp2k = ["httk-workflow-cp2k>=0.1.0,<1"]
+gromacs = ["httk-workflow-gromacs>=0.1.0,<1"]
+lammps = ["httk-workflow-lammps>=0.1.0,<1"]
+orca = ["httk-workflow-orca>=0.1.0,<1"]
+phonopy = ["httk-workflow-phonopy>=0.1.0,<1"]
+qe = ["httk-workflow-qe>=0.1.0,<1"]
+vasp = ["httk-workflow-vasp>=0.1.0,<1"]
+codes = [
+  "httk-workflow-abinit>=0.1.0,<1",
+  "httk-workflow-cp2k>=0.1.0,<1",
+  "httk-workflow-gromacs>=0.1.0,<1",
+  "httk-workflow-lammps>=0.1.0,<1",
+  "httk-workflow-orca>=0.1.0,<1",
+  "httk-workflow-phonopy>=0.1.0,<1",
+  "httk-workflow-qe>=0.1.0,<1",
+  "httk-workflow-vasp>=0.1.0,<1",
+]
 release = [
   "build>=1.2",
   "twine>=6.0",

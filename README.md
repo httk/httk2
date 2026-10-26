@@ -38,6 +38,13 @@ Each module is installed with its `default` extra, which selects that module's
 recommended optional features (for example numpy-backed numerics and `spglib`
 symmetry recognition).
 
+Simulation-code support comes as separate `httk-workflow-<code>` distributions.
+Install one through an extra, for example `pip install "httk2[vasp]"` (extras:
+`abinit`, `cp2k`, `gromacs`, `lammps`, `orca`, `phonopy`, `qe`, `vasp`), all
+eight with `pip install "httk2[codes]"`, or directly with
+`pip install httk-workflow-<code>`. *httk-workflow-phonopy* brings in
+*httk-workflow-vasp*.
+
 The modules share the PEP 420 native namespace package `httk`; there is no
 separate `httk2` import package.
 
@@ -67,6 +74,7 @@ make install           # editable-install the workspace with the [default] extra
 make install_develop   # ... adding the [dev] tooling extras
 make install_full      # ... adding the [ci], [docs] and [release] extras
 make install_vasp      # clone httk-workflow-vasp if missing, then make install
+make install_phonopy   # ... likewise (also clones httk-workflow-vasp, which it needs)
 make install_codes     # ... the same for all simulation-code support
 ```
 
@@ -99,9 +107,11 @@ environment does not remove packages.
 
 Simulation-code support (`httk-workflow-<code>`) is not cloned by `checkout`.
 `install_<code>` (`install_abinit`, `install_cp2k`, `install_gromacs`,
-`install_lammps`, `install_orca`, `install_qe` or `install_vasp`) clones that
+`install_lammps`, `install_orca`, `install_phonopy`, `install_qe` or
+`install_vasp`) clones that
 repository into `modules/` when it is missing, selecting the branch the
-`httk-workflow` checkout is on where it exists, and then runs `install`.
+`httk-workflow` checkout is on where it exists, and then runs `install`
+(`install_phonopy` also clones *httk-workflow-vasp*, which it depends on).
 `install_codes` does the same for all of them. Existing checkouts keep their
 current branch. Because `install` and the other workspace targets cover every
 release module under `modules/`, code support added once is afterwards installed
