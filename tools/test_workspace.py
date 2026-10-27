@@ -255,26 +255,26 @@ class WorkspaceTests(unittest.TestCase):
         return self.make(target, "HTTK_CODES=vasp qe", f"PYTHON={python}")
 
     def test_install_code_clones_on_workflow_branch_then_installs(self) -> None:
-        """install_<code> clones only the missing code support, then installs all."""
+        """install-<code> clones only the missing code support, then installs all."""
         self.fixture("mod")
         workflow = self.fixture("httk-workflow", develop=True)
         self.git(workflow, "switch", "develop")
         vasp = self.fixture("httk-workflow-vasp", develop=True, clone=False)
         qe = self.fixture("httk-workflow-qe", clone=False)
-        result = self.install_code("install_vasp")
+        result = self.install_code("install-vasp")
         self.assertEqual(self.git(vasp, "branch", "--show-current"), "develop")
         self.assertFalse(qe.exists())
         self.assertIn("modules/httk-workflow-vasp: no pyproject.toml", result.stdout)
         self.assertIn("-m pip install", (self.root / "python.log").read_text())
 
     def test_install_codes_keeps_existing_code_checkouts(self) -> None:
-        """install_codes clones absent code support without switching existing ones."""
+        """install-codes clones absent code support without switching existing ones."""
         self.fixture("mod")
         self.fixture("httk-workflow", develop=True)
         vasp = self.fixture("httk-workflow-vasp", develop=True)
         self.git(vasp, "switch", "-c", "feature")
         qe = self.fixture("httk-workflow-qe", clone=False)
-        result = self.install_code("install_codes")
+        result = self.install_code("install-codes")
         self.assertEqual(self.git(vasp, "branch", "--show-current"), "feature")
         self.assertEqual(self.git(qe, "branch", "--show-current"), "main")
         self.assertIn("modules/httk-workflow-qe: no pyproject.toml", result.stdout)

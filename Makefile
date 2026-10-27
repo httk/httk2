@@ -44,7 +44,7 @@ define git_foreach
 endef
 
 .PHONY: clean dist-clean dist dist-check release-check release-prepare checkout checkout-develop checkout-main update-submodules fetch pull push \
-	install install_minimal install_develop install_full ssh-push-remotes ci release-check-all release-docs-build release-aggregate-docs-build release-merge-tag-and-push-main
+	install install-minimal install-develop install-full ssh-push-remotes ci release-check-all release-docs-build release-aggregate-docs-build release-merge-tag-and-push-main status
 
 checkout: checkout-develop
 
@@ -97,19 +97,19 @@ push:
 # Editable installs of the release modules, the documentation site and this
 # metapackage (not the other development repositories, which are not httk
 # distributions), each with those of the selected extras it declares: install
-# takes the runtime [default] extras, install_develop adds the [dev] tooling,
-# and install_full adds the [ci] integrations plus [docs] and [release], so the
+# takes the runtime [default] extras, install-develop adds the [dev] tooling,
+# and install-full adds the [ci] integrations plus [docs] and [release], so the
 # shared environment can run every module's "make ci", documentation builds and
-# release checks. install_minimal takes no extras and skips the metapackage,
+# release checks. install-minimal takes no extras and skips the metapackage,
 # whose own requirements name the [default] extras.
 HTTK_INSTALL_EXTRAS = default
 HTTK_INSTALL_METAPACKAGE = .
-install_minimal: HTTK_INSTALL_EXTRAS =
-install_minimal: HTTK_INSTALL_METAPACKAGE =
-install_develop: HTTK_INSTALL_EXTRAS = default dev
-install_full: HTTK_INSTALL_EXTRAS = default dev ci docs release
+install-minimal: HTTK_INSTALL_EXTRAS =
+install-minimal: HTTK_INSTALL_METAPACKAGE =
+install-develop: HTTK_INSTALL_EXTRAS = default dev
+install-full: HTTK_INSTALL_EXTRAS = default dev ci docs release
 
-install install_minimal install_develop install_full:
+install install-minimal install-develop install-full:
 	@$(PYTHON) tools/check_install_environment.py
 	@set -eu; set --; \
 	for repo in $(foreach r,$(HTTK_MODULES) $(HTTK_DOCS_REPOSITORY),$(MODULES_DIR)/$(r)) $(HTTK_INSTALL_METAPACKAGE); do \
@@ -125,22 +125,22 @@ install install_minimal install_develop install_full:
 	$(PYTHON) -m pip install "$$@"
 
 # Simulation-code support (httk-workflow-<code>) is opt-in: "make checkout"
-# does not clone it. install_<code> clones httk-workflow-<code> when absent,
+# does not clone it. install-<code> clones httk-workflow-<code> when absent,
 # selecting the branch the httk-workflow checkout is on where it exists, and
 # then runs "make install", which installs every checked-out release module,
-# including code support added earlier. install_codes adds all of them;
-# install_phonopy also clones vasp, which it depends on.
+# including code support added earlier. install-codes adds all of them;
+# install-phonopy also clones vasp, which it depends on.
 HTTK_CODES ?= abinit cp2k gromacs lammps orca phonopy qe vasp
-HTTK_CODE_INSTALL_TARGETS = $(addprefix install_,$(HTTK_CODES))
+HTTK_CODE_INSTALL_TARGETS = $(addprefix install-,$(HTTK_CODES))
 HTTK_CODE_BRANCH = $(or $(shell git -C "$(MODULES_DIR)/httk-workflow" branch --show-current 2>/dev/null),develop)
 HTTK_CODE_CHECKOUT_REFS = $(foreach c,$(HTTK_INSTALL_CODES),$(if $(wildcard $(MODULES_DIR)/httk-workflow-$(c)/.git),,\
 	$(MODULES_DIR)/httk-workflow-$(c):$(HTTK_CODE_BRANCH)))
-install_codes: HTTK_INSTALL_CODES = $(HTTK_CODES)
-$(HTTK_CODE_INSTALL_TARGETS): HTTK_INSTALL_CODES = $(@:install_%=%)
-install_phonopy: HTTK_INSTALL_CODES = phonopy vasp
+install-codes: HTTK_INSTALL_CODES = $(HTTK_CODES)
+$(HTTK_CODE_INSTALL_TARGETS): HTTK_INSTALL_CODES = $(@:install-%=%)
+install-phonopy: HTTK_INSTALL_CODES = phonopy vasp
 
-.PHONY: install_codes $(HTTK_CODE_INSTALL_TARGETS)
-install_codes $(HTTK_CODE_INSTALL_TARGETS):
+.PHONY: install-codes $(HTTK_CODE_INSTALL_TARGETS)
+install-codes $(HTTK_CODE_INSTALL_TARGETS):
 	@$(MAKE) --no-print-directory checkout-develop HTTK_CHECKOUT_REFS="$(strip $(HTTK_CODE_CHECKOUT_REFS))"
 	@$(MAKE) --no-print-directory install
 
