@@ -47,11 +47,16 @@ recommended optional features (for example numpy-backed numerics and `spglib`
 symmetry recognition).
 
 Simulation-code support comes as separate `httk-workflow-<code>` distributions.
-Install one through an extra, for example `pip install "httk2[vasp]"` (extras:
-`abinit`, `cp2k`, `gromacs`, `lammps`, `orca`, `phonopy`, `qe`, `vasp`), all
-eight with `pip install "httk2[codes]"`, or directly with
-`pip install httk-workflow-<code>`. *httk-workflow-phonopy* brings in
-*httk-workflow-vasp*.
+VASP support is on PyPI: install it with `pip install "httk2[vasp]"` or
+`pip install httk-workflow-vasp`. The other code packages (`abinit`, `cp2k`,
+`gromacs`, `lammps`, `orca`, `phonopy`, `qe`) are not yet on PyPI; install them
+from GitHub, for example:
+
+```console
+pip install "httk-workflow-qe @ git+https://github.com/httk/httk-workflow-qe"
+```
+
+*httk-workflow-phonopy* brings in *httk-workflow-vasp*.
 
 The modules share the PEP 420 native namespace package `httk`; there is no
 separate `httk2` import package.
