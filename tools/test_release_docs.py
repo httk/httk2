@@ -86,6 +86,23 @@ class ReleaseDocsFilesTest(unittest.TestCase):
                 release_docs.build_docs(state)
             self.assertIn('"status": "failed"', state.read_text())
 
+    def test_site_environment_adds_candidates_without_a_site_checkout(self) -> None:
+        """Code-support candidates join the site's members; stable non-members do not."""
+
+        def selection(name: str, candidate: bool) -> release_docs.Selection:
+            return release_docs.Selection(
+                name, Path(name), "abc", "1.0.0", candidate, "v1.0.0"
+            )
+
+        core, vasp, other = (
+            selection("httk-core", True),
+            selection("httk-workflow-vasp", True),
+            selection("httk-workflow-qe", False),
+        )
+        self.assertEqual(
+            release_docs._site_environment([core], [core, vasp, other]), [core, vasp]
+        )
+
     def test_module_and_aggregate_are_independent_stages(self) -> None:
         """Each command performs only its own stage and retains module evidence."""
         with tempfile.TemporaryDirectory() as temporary:

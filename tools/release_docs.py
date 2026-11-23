@@ -556,6 +556,26 @@ def _overlay_site(source: Path, destination: Path) -> None:
                 target.unlink()
 
 
+def _site_environment(
+    members: list[Selection], selections: list[Selection]
+) -> list[Selection]:
+    """Return the distributions the aggregate site's environment installs from the batch.
+
+    The site's executable examples also run candidates it holds no checkout of
+    (simulation-code support such as *httk-workflow-vasp*), so every other
+    candidate's batch wheel is installed beside the site's members.
+
+    :param members: The site's member modules, at their final commits.
+    :param selections: The whole recorded batch.
+    :return: The members, then the other candidates in batch order.
+    """
+
+    names = {item.name for item in members}
+    return members + [
+        item for item in selections if item.candidate and item.name not in names
+    ]
+
+
 def _aggregate(
     state: dict[str, object],
     selections: list[Selection],
@@ -641,7 +661,8 @@ def _aggregate(
             os.environ.copy(),
             work / "logs" / f"site-{item.name}-gitlink.log",
         )
-    constraints = _constraints(work, final)
+    installed = _site_environment(final, selections)
+    constraints = _constraints(work, installed)
     core = next(item for item in final if item.name == "httk-core")
     tool_python, tool_env = _venv(
         work, "site-tooling", _wheel(work, core), constraints, work / "logs"
@@ -677,7 +698,7 @@ def _aggregate(
     _install_locked(
         docs_python,
         scratch,
-        final,
+        installed,
         work,
         docs_env,
         work / "logs" / "site",

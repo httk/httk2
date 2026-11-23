@@ -113,7 +113,9 @@ this order:
 2. Run `make release-aggregate-docs-build`. This separate stage prepares and
    strictly checks the aggregate site against the final module commits, then
    updates its lock, ecosystem manifest and
-   submodule checkouts without staging or committing them.
+   submodule checkouts without staging or committing them. Its environment
+   also installs the batch wheels of candidates the site has no submodule for
+   (simulation-code support), which its executable examples run.
 3. Review, commit and push the aggregate site's changes on `main`, including
    its gitlinks.
 
