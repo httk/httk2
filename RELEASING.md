@@ -10,7 +10,7 @@ Python matrix. GitHub still builds and validates each published distribution.
 Requirements: Python 3.12+, Git, make, uv, Node/npm for modules with JavaScript,
 network access for Python tools/packages and published inventories, and a Git
 signing key for the final publication command. The code matrix uses Python
-3.12, 3.13 and 3.14; uv obtains missing interpreters.
+3.12, 3.13, 3.14 and 3.15; uv obtains missing interpreters.
 
 1. Commit the intended module changes on `develop` (or `main` in main-only
    repositories), including the chosen final `project.version`. Run
